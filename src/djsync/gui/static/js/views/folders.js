@@ -6,6 +6,7 @@ import { h } from "../dom.js";
 import { addFolder, chooseFolder, removeFolder, renameFolder } from "../folder-dialogs.js";
 import { absoluteTime, plural, relativeTime } from "../format.js";
 import { relinkDialog } from "../relink.js";
+import { startSync } from "./sync.js";
 
 // Ordner, für die Relink in dieser Sitzung schon automatisch angeboten wurde
 const offeredRelink = new Set();
@@ -52,6 +53,17 @@ function folderActions(folder, reload, navigate) {
       "button",
       {
         type: "button",
+        // Hervorgehoben, wenn nichts offen ist; sonst ist das Review der nächste Schritt
+        class: "button small" + (folder.open_count > 0 ? "" : " primary"),
+        title: "Taste S",
+        onclick: () => startSync(folder.folder, navigate),
+      },
+      "Sync",
+    ),
+    h(
+      "button",
+      {
+        type: "button",
         class: "button small",
         title: "Verschobenen Ordner mit neuem Pfad verknüpfen",
         onclick: run((f) => relinkDialog(f.folder, { unreachable: !f.reachable })),
@@ -69,7 +81,17 @@ function folderRow(folder, reload, navigate) {
     : folder.name;
   return h(
     "li",
-    { class: "folder" + (folder.reachable ? "" : " unreachable") },
+    {
+      class: "folder" + (folder.reachable ? "" : " unreachable"),
+      tabindex: 0,
+      // Taste S auf der ausgewählten Zeile startet den Sync
+      onkeydown: (event) => {
+        if (event.target === event.currentTarget && event.key.toLowerCase() === "s" && !event.ctrlKey && !event.altKey) {
+          event.preventDefault();
+          startSync(folder.folder, navigate);
+        }
+      },
+    },
     h(
       "div",
       { class: "folder-main" },
