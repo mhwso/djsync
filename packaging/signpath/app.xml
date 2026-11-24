@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SignPath-Artefaktkonfiguration "app" (Slug: app) für den ersten Signierauftrag der
+  Release-Pipeline. Maßgeblich ist die Fassung in SignPath; diese Datei ist die Vorlage dafür.
+
+  Das Artefakt ist ein ZIP mit genau zwei Dateien:
+  - djsync.exe: das Programm aus PyInstaller
+  - uninst.exe: Inno Setups uninst-<…>.e32, für den Upload umbenannt. Daraus werden die
+    temporäre Setup-Kopie und unins000.exe (siehe packaging/djsync.iss).
+  Gebündelte Fremd-DLLs (Python, pywebview …) werden nach den SignPath-Foundation-Regeln
+  nicht mitsigniert.
+-->
+<artifact-configuration xmlns="http://signpath.io/artifact-configuration/v1">
+  <parameters>
+    <parameter name="version" required="true" />
+  </parameters>
+  <zip-file>
+    <pe-file path="djsync.exe" product-name="djsync" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+    <pe-file path="uninst.exe" product-name="djsync" product-version="${version}">
+      <authenticode-sign />
+    </pe-file>
+  </zip-file>
+</artifact-configuration>
