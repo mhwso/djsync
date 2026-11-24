@@ -1,9 +1,9 @@
 """Baut packaging/djsync.ico aus den SVG-Quellen in diesem Ordner.
 
 Drei Varianten, damit das Icon auch klein lesbar bleibt:
-  djsync.svg        64–256 px: Sync-Pfeile um eine Achtelnote
-  djsync-small.svg  32–48 px: dieselbe Form mit dickeren Linien
-  djsync-tiny.svg   16–24 px: nur die Note
+  djsync.svg        64–256 px: Vinyl mit Rillen und Glanz auf grünem Grund
+  djsync-small.svg  32–48 px: weniger, dickere Rillen, ohne Glanz
+  djsync-tiny.svg   16–24 px: nur Platte, Label und Loch
 
 Aufruf (im Projektordner):
   uv run --with pillow --with cairosvg python packaging/icon/build_ico.py
