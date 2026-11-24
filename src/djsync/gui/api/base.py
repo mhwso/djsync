@@ -58,7 +58,7 @@ def spotify_errors(what: str, not_found: str | None = None) -> Iterator[None]:
 
 def check_folder(db: Database, folder: str):
     """Der gespeicherte Eintrag des Ordners; ApiError, wenn djsync ihn nicht kennt."""
-    row = db.get_playlist(folder)
+    row = db.get_folder(folder)
     if row is None:
         raise ApiError(f"Der Ordner „{folder}“ ist nicht in djsync.")
     return row
@@ -68,6 +68,19 @@ def check_reachable(folder: str) -> None:
     """ApiError, wenn der Ordner gerade nicht erreichbar ist (z. B. Laufwerk nicht eingebunden)."""
     if not os.path.isdir(folder):
         raise ApiError(f"Der Ordner „{folder}“ ist nicht erreichbar. Ist das Laufwerk eingebunden?")
+
+
+def choose_folder(start: str = "") -> str | None:
+    """Öffnet den Ordnerdialog des Systems (beginnt in `start`, falls vorhanden). Gibt den
+    gewählten Pfad unverändert zurück, None bei Abbruch. Nur in der App nutzbar, nicht in Tests."""
+    import webview  # erst hier: Tests und CLI brauchen pywebview nicht
+
+    window = webview.active_window()
+    if window is None:
+        raise ApiError("Der Ordnerdialog ist gerade nicht verfügbar.")
+    directory = start if start and os.path.isdir(start) else ""
+    paths = window.create_file_dialog(webview.FileDialog.FOLDER, directory=directory)
+    return paths[0] if paths else None
 
 
 class ApiArea:

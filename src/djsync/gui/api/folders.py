@@ -8,7 +8,7 @@ from ...db import Database
 from ...filenames import normalize_folder
 from ...spotify import SpotifyError
 from ...sync import playlist_name
-from .base import ApiArea, ApiError, check_folder
+from .base import ApiArea, ApiError, check_folder, choose_folder
 
 PLAYLIST_URL = "https://open.spotify.com/playlist/{}"
 GONE = "Spotify kennt die Playlist nicht mehr."
@@ -57,13 +57,7 @@ class FoldersApi(ApiArea):
     def choose(self) -> str | None:
         """Öffnet den Ordnerdialog des Systems. Gibt den gewählten Pfad zurück (danach
         `suggest`), None bei Abbruch. Nur in der App nutzbar, nicht in Tests."""
-        import webview  # erst hier: Tests und CLI brauchen pywebview nicht
-
-        window = webview.active_window()
-        if window is None:
-            raise ApiError("Der Ordnerdialog ist gerade nicht verfügbar.")
-        paths = window.create_file_dialog(webview.FileDialog.FOLDER)
-        return paths[0] if paths else None
+        return choose_folder()
 
     def add(self, path: str, name: str) -> dict:
         """Nimmt einen Ordner mit dem gewählten Playlist-Namen auf. Auf Spotify passiert noch
@@ -76,7 +70,7 @@ class FoldersApi(ApiArea):
             _check_new(db, folder)
             db.add_folder(folder, name)
             db.commit()
-            return folder_entry(db, db.get_playlist(folder))
+            return folder_entry(db, db.get_folder(folder))
 
     def rename(self, folder: str, name: str) -> dict:
         """Ändert den Playlist-Namen. Existiert die Playlist schon, wird sie sofort auch auf
@@ -89,7 +83,7 @@ class FoldersApi(ApiArea):
                     client.update_playlist(row["playlist_id"], name=name)
             db.rename_folder(folder, name)
             db.commit()
-            return folder_entry(db, db.get_playlist(folder))
+            return folder_entry(db, db.get_folder(folder))
 
     def remove(self, folder: str, delete_playlist: bool) -> None:
         """Entfernt den Ordner aus djsync. Die Oberfläche fragt jedes Mal, ob die Playlist auf
@@ -135,7 +129,7 @@ def _check_dir(folder: str) -> None:
 
 
 def _check_new(db: Database, folder: str) -> None:
-    if db.get_playlist(folder) is not None:
+    if db.get_folder(folder) is not None:
         raise ApiError(f"Der Ordner „{folder}“ ist schon in djsync.")
 
 
