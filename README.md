@@ -138,10 +138,13 @@ Python-Umgebung legt es unter `%LOCALAPPDATA%\djsync-build` an, nicht im Projekt
 .\packaging\build.ps1 -Source    # nichts bauen, GUI direkt aus dem Quellcode starten (schnell)
 ```
 
-Aus WSL heraus (Projekt im WSL-Dateisystem) mit demselben Skript:
+Aus WSL heraus (Projekt im WSL-Dateisystem) ruft `packaging/build.sh` dasselbe Skript unter
+Windows auf, mit denselben Optionen:
 
 ```bash
-powershell.exe -ExecutionPolicy Bypass -File "$(wslpath -w packaging/build.ps1)" -Run
+packaging/build.sh            # bauen
+packaging/build.sh -Run       # bauen und starten
+packaging/build.sh -Source    # GUI direkt aus dem Quellcode
 ```
 
 Der Installer `dist\djsync-setup-<version>.exe` entsteht nur mit

@@ -7,8 +7,7 @@ Aufruf in PowerShell im Projektordner:
   .\packaging\build.ps1 -Run       # danach djsync.exe starten
   .\packaging\build.ps1 -Source    # nichts bauen, GUI direkt aus dem Quellcode starten (schnell)
 
-Aus WSL (Projekt im WSL-Dateisystem):
-  powershell.exe -ExecutionPolicy Bypass -File "$(wslpath -w packaging/build.ps1)" -Run
+Aus WSL (Projekt im WSL-Dateisystem): packaging/build.sh mit denselben Optionen
 
 Die Python-Umgebung liegt unter %LOCALAPPDATA%\djsync-build, nicht im Projekt. Die gebaute App
 nutzt dieselben Daten wie die installierte (%APPDATA%\djsync).
