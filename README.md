@@ -42,8 +42,10 @@ Für alle, die kein Terminal nutzen wollen – siehe [ANLEITUNG.md](ANLEITUNG.md
 
 1. `djsync-setup-<version>.exe` aus dem neuesten [Release](../../releases/latest) herunterladen
    und starten. Installiert wird nur für den eigenen Benutzer, ohne Adminrechte, mit
-   Startmenü-Eintrag. Der Installer ist nicht signiert, Windows warnt deshalb beim ersten Start
-   (**Weitere Informationen** → **Trotzdem ausführen**).
+   Startmenü-Eintrag. Installer und Programm werden über SignPath signiert (siehe
+   [Code signing policy](#code-signing-policy)). Ältere, unsignierte Versionen lösen beim ersten
+   Start eine Windows-Warnung aus (**Weitere Informationen** → **Trotzdem ausführen**) und werden
+   von Smart App Control bzw. App-Control-Richtlinien blockiert (Fehler 4551).
 2. djsync aus dem Startmenü öffnen → das Programm führt durch die Einrichtung.
 3. **Updates:** Bei jedem Start prüft djsync, ob es ein neueres Release gibt, und zeigt dann
    einen Hinweis mit Link. Zum Aktualisieren einfach den neuen Installer ausführen.
@@ -127,6 +129,14 @@ Ein Versions-Tag (`v0.3.0` usw.) baut per GitHub Actions den Installer
 ab (die Update-Prüfung vergleicht beides). Der Workflow lässt sich auch manuell unter „Actions“ starten; der Installer liegt dann
 als Artefakt am Lauf.
 
+Signiert wird über [SignPath](https://signpath.org), sobald die Repository-Variable
+`SIGNPATH_ORGANIZATION_ID` und das Secret `SIGNPATH_API_TOKEN` gesetzt sind (Projekt-Slug
+`djsync`, Artefaktkonfigurationen `app` und `installer` nach den Vorlagen in
+`packaging/signpath/`). Ein Tag nutzt die Richtlinie `release-signing`: Jeder Lauf erzeugt zwei
+Signieraufträge, die in SignPath freigegeben werden müssen, der Workflow wartet bis zu einer
+Stunde pro Auftrag. Manuelle Läufe nutzen `test-signing` mit einem Testzertifikat. Ohne die
+Variable baut der Workflow wie bisher unsigniert.
+
 Lokal unter Windows (PowerShell, Python 3.11+, [Inno Setup 6](https://jrsoftware.org/isinfo.php)):
 
 ```powershell
@@ -137,6 +147,26 @@ python -m PyInstaller --noconfirm --clean packaging\djsync.spec   # → dist\djs
 ```
 
 Die GUI lässt sich während der Entwicklung auch direkt starten: `uv run djsync-gui`.
+
+<a id="code-signing-policy"></a>
+
+## ✍️ Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by
+[SignPath Foundation](https://signpath.org).
+
+Signiert werden nur Dateien, die per GitHub Actions aus diesem Repository gebaut wurden
+(`djsync.exe`, Installer und Deinstaller). Mitgelieferte Fremdbibliotheken (Python-Laufzeit,
+pywebview usw.) bleiben unverändert und werden nicht mit diesem Zertifikat signiert.
+
+**Rollen**
+
+- Committer und Reviewer: [Mitglieder des Repositorys](https://github.com/mhwso/djsync/graphs/contributors)
+- Approver (geben jede Signierung frei): [Owner des Repositorys](https://github.com/mhwso)
+
+**Datenschutz:** djsync überträgt keine Daten an andere Systeme, außer an die Spotify-Web-API
+(für die vom Nutzer eingerichteten Playlists) und an die GitHub-API (Abfrage der neuesten
+Version beim Start, ohne persönliche Daten). Siehe auch [Daten](#-daten).
 
 ## 📄 Lizenz
 
