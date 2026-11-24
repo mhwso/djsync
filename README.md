@@ -1,10 +1,41 @@
-# djsync
+<div align="center">
 
-Spiegelt einen lokalen Musikordner als Spotify-Playlist – ein Ordner, eine Playlist.
+# 🎧 djsync
+
+**Spiegelt lokale Musikordner als Spotify-Playlists – ein Ordner, eine Playlist.**
+
+[![Neueste Version](https://img.shields.io/github/v/release/mhwso/djsync?label=Version&color=1DB954)](https://github.com/mhwso/djsync/releases/latest)
+[![Veröffentlicht](https://img.shields.io/github/release-date/mhwso/djsync?label=ver%C3%B6ffentlicht)](https://github.com/mhwso/djsync/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/mhwso/djsync/total?label=Downloads)](https://github.com/mhwso/djsync/releases)
+[![Tests](https://img.shields.io/github/actions/workflow/status/mhwso/djsync/ci.yml?branch=main&label=Tests)](https://github.com/mhwso/djsync/actions/workflows/ci.yml)
+[![Windows-Release](https://img.shields.io/github/actions/workflow/status/mhwso/djsync/release.yml?label=Windows-Build)](https://github.com/mhwso/djsync/actions/workflows/release.yml)
+<br>
+[![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fmhwso%2Fdjsync%2Fmain%2Fpyproject.toml&label=Python)](pyproject.toml)
+[![Plattform](https://img.shields.io/badge/Plattform-Windows%20%7C%20Linux%2FWSL-informational)](#installation)
+[![Spotify](https://img.shields.io/badge/Spotify-Web%20API-1DB954?logo=spotify&logoColor=white)](https://developer.spotify.com/documentation/web-api)
+[![Letzter Commit](https://img.shields.io/github/last-commit/mhwso/djsync?label=letzter%20Commit)](https://github.com/mhwso/djsync/commits/main)
+
+[Herunterladen](https://github.com/mhwso/djsync/releases/latest) · [Anleitung](ANLEITUNG.md) · [Fehler melden](https://github.com/mhwso/djsync/issues) · [Sicherheit](SECURITY.md)
+
+</div>
+
+---
+
 Der Ordner ist die einzige Quelle: neue Dateien landen in der Playlist, gelöschte
 verschwinden daraus, die neuesten Downloads stehen oben.
 
-## Windows: djsync.exe (ohne Installation)
+## ✨ Funktionen
+
+- **Ein Ordner, eine Playlist** – rekursiver Scan, neueste Dateien zuerst
+- **Treffsichere Suche** – zuerst per ISRC, dann über Artist, Titel und Mix inklusive Dauer
+- **Review** für unsichere Treffer – Vorschlag wählen, Spotify-Link einfügen oder als „nicht auf Spotify“ markieren
+- **Änderungsplan vor jedem Schreiben** – nichts passiert ohne Bestätigung
+- **Sicher** – entfernt nur selbst hinzugefügte Tracks, bricht bei leerem oder fehlendem Ordner ab
+- **Relink** nach dem Verschieben oder Umbenennen eines Ordners
+
+<a id="installation"></a>
+
+## 🪟 Windows: djsync.exe (ohne Installation)
 
 Für alle, die kein Terminal nutzen wollen – siehe [ANLEITUNG.md](ANLEITUNG.md) zum Weitergeben.
 
@@ -14,7 +45,7 @@ Für alle, die kein Terminal nutzen wollen – siehe [ANLEITUNG.md](ANLEITUNG.md
 
 Alle Befehle unten funktionieren auch mit der .exe (`djsync.exe sync "D:\Musik\House"`).
 
-## Einrichtung (Entwicklung, WSL/Linux)
+## 🐧 Einrichtung (Entwicklung, WSL/Linux)
 
 1. **uv installieren** (falls noch nicht vorhanden): https://docs.astral.sh/uv/
 2. **Spotify-App** im [Developer-Dashboard](https://developer.spotify.com/dashboard):
@@ -28,7 +59,7 @@ Alle Befehle unten funktionieren auch mit der .exe (`djsync.exe sync "D:\Musik\H
    ```
    Alternativ zur Entwicklung: `.env` im Projektordner mit `SPOTIFY_CLIENT_ID=…` (siehe `.env.example`).
 
-## Benutzung
+## 🚀 Benutzung
 
 ```bash
 djsync sync "D:\Musik\Techno 2026-11"      # Windows-Pfade werden nach /mnt/d/… übersetzt
@@ -43,7 +74,7 @@ djsync relink /mnt/d/Alt /mnt/d/Neu         # nach Umbenennen/Verschieben des Or
 Ablauf von `sync`: Ordner rekursiv scannen → auf Spotify suchen (ISRC, dann Artist/Titel)
 → optional Review → Änderungen anzeigen → nach Bestätigung (`j`) übernehmen.
 
-### Treffer
+### 🎯 Treffer
 
 | Status | Bedeutung |
 |---|---|
@@ -56,13 +87,13 @@ Ablauf von `sync`: Ordner rekursiv scannen → auf Spotify suchen (ISRC, dann Ar
 Zuordnungen hängen am Track (ISRC bzw. Artist+Titel+Mix), nicht am Dateinamen –
 umbenannte Dateien und Duplikate in anderen Ordnern übernehmen sie automatisch.
 
-### Sicherheit
+### 🛡️ Sicherheit
 
 - djsync entfernt nur Tracks, die es selbst hinzugefügt hat. Von Hand ergänzte Tracks bleiben (am Ende der Playlist).
 - Ist der Ordner nicht erreichbar oder leer, die Playlist aber gefüllt, bricht djsync ab.
 - Neue Playlists sind privat und heißen „DJSYNC - <Ordnername>“ (bzw. „DJSYNC - <--name>“).
 
-## Daten
+## 💾 Daten
 
 | | Linux/WSL | Windows |
 |---|---|---|
@@ -72,7 +103,7 @@ umbenannte Dateien und Duplikate in anderen Ordnern übernehmen sie automatisch.
 Die Client-ID wird in dieser Reihenfolge gesucht: Umgebungsvariable `SPOTIFY_CLIENT_ID`,
 `.env` im Projektordner, `client_id` in `config.toml`.
 
-## Entwicklung
+## 🛠️ Entwicklung
 
 ```bash
 uv run pytest
