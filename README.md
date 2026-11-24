@@ -127,16 +127,26 @@ Ein Versions-Tag (`v0.3.0` usw.) baut per GitHub Actions den Installer
 ab (die Update-Prüfung vergleicht beides). Der Workflow lässt sich auch manuell unter „Actions“ starten; der Installer liegt dann
 als Artefakt am Lauf.
 
-Lokal unter Windows (PowerShell, Python 3.11+, [Inno Setup 6](https://jrsoftware.org/isinfo.php)):
+#### Lokal bauen und ausprobieren
+
+Unter Windows mit Python 3.11+ erledigt `packaging/build.ps1` alles in einem Schritt. Die
+Python-Umgebung legt es unter `%LOCALAPPDATA%\djsync-build` an, nicht im Projekt:
 
 ```powershell
-python -m pip install . "pyinstaller>=6"
-python -m PyInstaller --noconfirm --clean packaging\djsync.spec   # → dist\djsync\djsync.exe
-& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=0.3.0 packaging\djsync.iss
-# → dist\djsync-setup-0.3.0.exe
+.\packaging\build.ps1            # → dist\djsync\djsync.exe (+ Installer, falls Inno Setup installiert)
+.\packaging\build.ps1 -Run       # bauen und djsync.exe starten
+.\packaging\build.ps1 -Source    # nichts bauen, GUI direkt aus dem Quellcode starten (schnell)
 ```
 
-Die GUI lässt sich während der Entwicklung auch direkt starten: `uv run djsync-gui`.
+Aus WSL heraus (Projekt im WSL-Dateisystem) mit demselben Skript:
+
+```bash
+powershell.exe -ExecutionPolicy Bypass -File "$(wslpath -w packaging/build.ps1)" -Run
+```
+
+Der Installer `dist\djsync-setup-<version>.exe` entsteht nur mit
+[Inno Setup 6](https://jrsoftware.org/isinfo.php) (`winget install JRSoftware.InnoSetup`). Die
+lokal gebaute App nutzt dieselben Daten wie die installierte (`%APPDATA%\djsync`).
 
 ## 📄 Lizenz
 
