@@ -5,6 +5,11 @@
 // Python im Hintergrund (api/sync.py) und meldet sich über die Events sync.*. Die Ansicht kann
 // jederzeit verlassen und wieder geöffnet werden; sie holt sich den Stand über sync.status.
 //
+// Gibt es nach dem Suchen offene Tracks, fragt die Ansicht vor dem Änderungsplan „erst prüfen“
+// oder „direkt weiter“. „Erst prüfen“ öffnet das Review mit from=sync; dessen „Fertig“ führt
+// mit step=plan hierher zurück. Der Sync bleibt dabei in Python bereit (kein erneutes Einlesen
+// oder Suchen), Zusammenfassung und Plan werden mit den Review-Entscheidungen neu berechnet.
+//
 // Tasten: Esc bricht ab bzw. verwirft, Strg+Enter übernimmt den Änderungsplan.
 
 import { api, errorMessage, on } from "../api.js";
@@ -102,6 +107,23 @@ function trackList(title, tracks, sign) {
   );
 }
 
+// Hinweis auf offene Tracks vor dem Änderungsplan
+function reviewHint(open, review, proceed) {
+  return h(
+    "section",
+    { class: "sync-card sync-hint" },
+    h("h2", {}, "Offene Tracks prüfen?"),
+    h(
+      "p",
+      {},
+      `${plural(open, "Track ist", "Tracks sind")} noch offen. Du kannst sie jetzt im Review prüfen – `,
+      "danach geht es mit dem Änderungsplan dieses Syncs weiter, ohne erneutes Einlesen oder Suchen. ",
+      "Oder du siehst dir den Änderungsplan direkt an.",
+    ),
+    h("div", { class: "sync-actions" }, review, proceed),
+  );
+}
+
 function planView(plan) {
   const lines = [];
   if (plan.playlist_lost) {
@@ -136,6 +158,8 @@ export default {
     root.append(h("div", { class: "view-head" }, title, h("span", { class: "mono muted" }, folder ?? "")), body);
     const home = () => navigate("folders");
     let keys = null; // Tastenbelegung des aktuellen Schritts
+    // Rückkehr aus dem Review: Hinweis „erst prüfen / direkt weiter“ nicht noch einmal zeigen
+    let skipHint = params.step === "plan";
 
     function show(...children) {
       body.replaceChildren(...children.flat().filter(Boolean));
@@ -157,6 +181,7 @@ export default {
     }
 
     async function start() {
+      skipHint = false; // neuer Sync: Hinweis wieder anbieten
       try {
         await api("sync.start", folder);
       } catch (err) {
@@ -227,12 +252,38 @@ export default {
       );
     }
 
-    // Zusammenfassung und Änderungsplan. Der Plan wird bei jedem Aufruf neu berechnet, damit
-    // Review-Entscheidungen einfließen (Rückkehr aus dem Review, #16).
+    // Zusammenfassung, bei offenen Tracks zuerst der Hinweis „erst prüfen / direkt weiter“.
     async function ready() {
-      let summary, plan;
+      let summary;
       try {
-        [summary, plan] = await Promise.all([api("sync.summary"), api("sync.plan")]);
+        summary = await api("sync.summary");
+      } catch (err) {
+        fail(errorMessage(err), start);
+        return;
+      }
+      if (summary.open.length && !skipHint) {
+        const review = button("Erst prüfen", () => navigate("review", { folder, from: "sync" }), "primary");
+        const proceed = button("Direkt weiter", () => {
+          skipHint = true;
+          showPlan(summary);
+        });
+        keys = { Escape: discard };
+        show(
+          summaryView(summary),
+          reviewHint(summary.open.length, review, proceed),
+          h("div", { class: "sync-actions" }, button("Verwerfen", discard)),
+        );
+        review.focus();
+        return;
+      }
+      await showPlan(summary);
+    }
+
+    // Änderungsplan. Er wird bei jedem Aufruf neu berechnet, damit Review-Entscheidungen einfließen.
+    async function showPlan(summary) {
+      let plan;
+      try {
+        plan = await api("sync.plan");
       } catch (err) {
         fail(errorMessage(err), start);
         return;
