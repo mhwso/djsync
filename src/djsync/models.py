@@ -69,8 +69,10 @@ NOT_ON_SPOTIFY = "not_on_spotify"
 
 # Status, deren Track in die Playlist gehört
 PLAYLIST_STATUSES = frozenset({EXACT, APPROXIMATE, MANUAL})
-# Status, die im Review auftauchen
+# Status, die im Review auftauchen („offen“)
 REVIEW_STATUSES = frozenset({APPROXIMATE, NOT_FOUND})
+# Status, die der Nutzer festgelegt hat („entschieden“)
+DECIDED_STATUSES = frozenset({MANUAL, NOT_ON_SPOTIFY})
 
 
 @dataclass
