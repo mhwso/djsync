@@ -148,6 +148,11 @@ def review_tracks(db: Database, folder: str, filter: str = OPEN) -> list[ReviewT
     return [t for t in _folder_tracks(db, folder) if t.record.status in statuses]
 
 
+def find_track(db: Database, folder: str, fingerprint: str) -> ReviewTrack | None:
+    """Der Track mit diesem Fingerprint im Ordner, gleich welcher Treffer-Status – sonst None."""
+    return next((t for t in _folder_tracks(db, folder) if t.fingerprint == fingerprint), None)
+
+
 def next_open_track(db: Database, folder: str, after: str | None = None) -> ReviewTrack | None:
     """Nächster offener Track nach dem Track mit Fingerprint `after`, am Ende geht es vorn weiter.
 

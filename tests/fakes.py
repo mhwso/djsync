@@ -49,7 +49,7 @@ def router(spotify: FakeSpotify, github: FakeGitHub) -> httpx.MockTransport:
 
     def handle(request: httpx.Request) -> httpx.Response:
         host = request.url.host
-        if host == "api.spotify.com":
+        if host in ("api.spotify.com", "accounts.spotify.com"):
             return spotify.handle(request)
         if host == "api.github.com":
             return github.handle(request)

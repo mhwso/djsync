@@ -39,9 +39,25 @@ function folderActions(folder, reload, navigate) {
   return h(
     "div",
     { class: "folder-actions" },
+    // Review des Ordners (#/review?folder=…)
     h(
       "button",
-      { type: "button", class: "button small primary", title: "Taste S", onclick: () => startSync(folder.folder, navigate) },
+      {
+        type: "button",
+        class: "button small" + (folder.open_count > 0 ? " primary" : ""),
+        onclick: () => navigate("review", { folder: folder.folder }),
+      },
+      "Review",
+    ),
+    h(
+      "button",
+      {
+        type: "button",
+        // Hervorgehoben, wenn nichts offen ist; sonst ist das Review der nächste Schritt
+        class: "button small" + (folder.open_count > 0 ? "" : " primary"),
+        title: "Taste S",
+        onclick: () => startSync(folder.folder, navigate),
+      },
       "Sync",
     ),
     h(

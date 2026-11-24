@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
+from urllib.parse import parse_qs
 
 import httpx
 
@@ -35,6 +36,10 @@ class FakeSpotify:
         self.requests: list[httpx.Request] = []
         self._next_id = 1
         self.on_request = None  # optionaler Haken, z. B. um während der Suche abzubrechen
+        self.unavailable: set[str] = set()  # Track-IDs, deren Einzelabruf mit 404 scheitert
+        # Anmeldung: POST accounts.spotify.com/api/token
+        self.token_requests: list[dict[str, list[str]]] = []  # Formulardaten je Anfrage
+        self.token_status = 200  # z. B. 400 für einen abgelehnten Code
 
     # ---- Testhilfen -------------------------------------------------------
 
@@ -75,6 +80,8 @@ class FakeSpotify:
             response = self.on_request(request)
             if response is not None:
                 return response
+        if request.url.host == "accounts.spotify.com":
+            return self._token(request)
         path = request.url.path.removeprefix("/v1")
         parts = path.strip("/").split("/")
         body = json.loads(request.content) if request.content else None
@@ -107,8 +114,26 @@ class FakeSpotify:
                 pl["items"] += [u.removeprefix("spotify:track:") for u in body["uris"]]
                 return httpx.Response(201, json={"snapshot_id": "s"})
         if parts[0] == "tracks":
+            # Einzelabruf (z. B. Link im Review); unbekannte IDs liefern einen Platzhalter-Track,
+            # IDs in `unavailable` einen 404
+            if parts[1] in self.unavailable:
+                return httpx.Response(404, json={"error": {"status": 404, "message": "Non existing id"}})
             return httpx.Response(200, json=self._by_id(parts[1]))
         return httpx.Response(404, json={"error": {"status": 404, "message": f"unbekannt: {path}"}})
+
+    def _token(self, request: httpx.Request) -> httpx.Response:
+        """Token-Endpunkt (Anmeldung und Erneuerung): gibt ein Token mit allen Scopes aus."""
+        form = parse_qs(request.content.decode())
+        self.token_requests.append(form)
+        if request.url.path != "/api/token" or self.token_status != 200:
+            return httpx.Response(self.token_status if self.token_status != 200 else 404,
+                                  json={"error": "invalid_grant"})
+        return httpx.Response(200, json={
+            "access_token": f"access-{len(self.token_requests)}",
+            "refresh_token": "refresh",
+            "expires_in": 3600,
+            "scope": " ".join(SCOPES),
+        })
 
     def _by_id(self, track_id: str) -> dict:
         for t in self.catalog:
