@@ -28,9 +28,10 @@ class SpotifyError(Exception):
 
 
 class SpotifyClient:
-    def __init__(self, auth: Auth):
+    def __init__(self, auth: Auth, *, transport: httpx.BaseTransport | None = None):
         self.auth = auth
-        self.http = httpx.Client(timeout=30)
+        # transport: in Tests z. B. httpx.MockTransport statt echter Netzwerkzugriffe
+        self.http = httpx.Client(timeout=30, transport=transport)
 
     def close(self) -> None:
         self.http.close()

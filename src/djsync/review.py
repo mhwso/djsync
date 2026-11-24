@@ -1,26 +1,25 @@
-"""Interaktiver Review für ungefähre und nicht gefundene Treffer."""
+"""Interaktiver Review für ungefähre und nicht gefundene Treffer (CLI).
+
+Die Entscheidungen selbst liegen in `review_core`; hier sind nur Ein- und Ausgabe.
+"""
 
 from __future__ import annotations
 
 import os
-import re
 
 from . import ui
 from .db import Database
 from .matching import score_candidate
-from .models import MANUAL, NOT_ON_SPOTIFY, REVIEW_STATUSES, Candidate, LocalFile
-from .spotify import SpotifyClient, SpotifyError
-
-_LINK_RE = re.compile(r"(?:open\.spotify\.com/(?:intl-[a-z]+/)?track/|spotify:track:)([A-Za-z0-9]{22})")
-_ID_RE = re.compile(r"^[A-Za-z0-9]{22}$")
-
-
-def parse_track_link(text: str) -> str | None:
-    text = text.strip()
-    m = _LINK_RE.search(text)
-    if m:
-        return m.group(1)
-    return text if _ID_RE.match(text) else None
+from .models import REVIEW_STATUSES, Candidate, LocalFile
+from .review_core import (
+    InvalidLinkError,
+    TrackUnavailableError,
+    accept_candidate,
+    accept_link,
+    mark_not_on_spotify,
+    parse_track_link,  # noqa: F401 – bisheriger Importpfad
+)
+from .spotify import SpotifyClient
 
 
 def fmt_duration(ms: int | None) -> str:
@@ -91,33 +90,23 @@ def run_review(
             if choice in ("s", ""):
                 break
             if choice == "n":
-                db.save_match(fp, NOT_ON_SPOTIFY, None)
-                db.commit()
+                mark_not_on_spotify(db, fp)
                 changed += 1
                 break
             if choice == "l":
                 link = _ask("Spotify-Link: ")
                 if link is None:
                     return changed
-                track_id = parse_track_link(link)
-                if not track_id:
-                    ui.warn("Kein gültiger Track-Link.")
-                    continue
                 try:
-                    c = client.get_track(track_id)
-                except SpotifyError as e:
-                    ui.warn(f"Track nicht abrufbar: {e}")
+                    c = accept_link(db, client, fp, link)
+                except (InvalidLinkError, TrackUnavailableError) as e:
+                    ui.warn(str(e))
                     continue
                 ui.success(fmt_candidate(c))
-                candidates = [c] + [x for x in record.candidates if x.id != c.id]
-                db.save_match(fp, MANUAL, c.id, candidates)
-                db.commit()
                 changed += 1
                 break
             if choice.isdigit() and 1 <= int(choice) <= len(record.candidates):
-                c = record.candidates[int(choice) - 1]
-                db.save_match(fp, MANUAL, c.id)
-                db.commit()
+                accept_candidate(db, fp, record.candidates[int(choice) - 1].id)
                 changed += 1
                 break
             ui.warn("Ungültige Eingabe.")
