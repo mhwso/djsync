@@ -42,7 +42,11 @@ def setup(need_client: bool = True):
 
 
 def confirm(prompt: str) -> bool:
-    return input(prompt).strip().lower() in ("j", "ja", "y", "yes")
+    try:
+        return input(prompt).strip().lower() in ("j", "ja", "y", "yes")
+    except EOFError:
+        print()
+        return False
 
 
 def print_summary(groups: dict[str, list[LocalFile]]) -> None:
@@ -174,6 +178,11 @@ def _review_scope(db: Database, folder_arg: str | None) -> list[tuple[LocalFile,
 
 
 def cmd_review(args) -> None:
+    if not sys.stdin.isatty():
+        raise Abort(
+            "Das Review braucht ein interaktives Terminal.\n"
+            "Bitte `djsync review` direkt in einem Terminal ausführen."
+        )
     cfg, db, client = setup()
     files = _review_scope(db, args.folder)
     if args.folder and not files:
