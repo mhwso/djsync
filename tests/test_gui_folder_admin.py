@@ -145,6 +145,34 @@ def test_remove_and_delete_when_playlist_is_already_gone(api, run_cli, music, sp
     assert api.folders.list() == []
 
 
+def test_remove_without_login_asks_to_sign_in_again_and_keeps_folder(api, run_cli, music, spotify, paths):
+    folder = _synced_folder(run_cli, music, spotify)
+    paths.token_file.unlink()
+
+    with pytest.raises(ApiError, match="Einrichtung"):
+        api.folders.remove(folder, True)
+
+    assert [e["folder"] for e in api.folders.list()] == [folder]
+
+
+def test_spotify_connections_are_closed_after_use(api, run_cli, music, spotify, ctx, monkeypatch):
+    folder = _synced_folder(run_cli, music, spotify)
+    clients = []
+    open_client = ctx.spotify
+
+    def recording(*args, **kwargs):
+        clients.append(open_client(*args, **kwargs))
+        return clients[-1]
+
+    monkeypatch.setattr(ctx, "spotify", recording)
+
+    api.folders.rename(folder, "Peak Time")
+    api.folders.remove(folder, True)
+
+    assert len(clients) == 2
+    assert all(c.http.is_closed for c in clients)
+
+
 class _Handlers(list):
     def __iadd__(self, handler):
         self.append(handler)

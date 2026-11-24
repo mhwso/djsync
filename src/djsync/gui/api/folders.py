@@ -1,25 +1,21 @@
-"""Ordner: auflisten (Startbildschirm), hinzufügen, umbenennen, entfernen. Relink folgt."""
+"""Ordner: auflisten (Startbildschirm), hinzufügen, umbenennen, entfernen. Relink: siehe relink.py."""
 
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
-from contextlib import contextmanager
 
-import httpx
-
-from ...auth import AuthError
-from ...config import ConfigError
 from ...db import Database
 from ...filenames import normalize_folder
 from ...spotify import SpotifyError
 from ...sync import playlist_name
-from .base import ApiArea, ApiError
+from .base import ApiArea, ApiError, check_folder
 
 PLAYLIST_URL = "https://open.spotify.com/playlist/{}"
+GONE = "Spotify kennt die Playlist nicht mehr."
 
 
-def _entry(db: Database, row) -> dict:
+def folder_entry(db: Database, row) -> dict:
+    """Ein Ordner, wie ihn `FoldersApi.list()` liefert."""
     return {
         "folder": row["folder"],
         "name": row["name"],
@@ -46,7 +42,7 @@ class FoldersApi(ApiArea):
           reachable     ob der Ordner gerade erreichbar ist (z. B. Laufwerk eingebunden)
         """
         with self._ctx.db() as db:
-            result = [_entry(db, r) for r in db.all_folders()]
+            result = [folder_entry(db, r) for r in db.all_folders()]
         return sorted(result, key=lambda e: (e["name"].casefold(), e["folder"]))
 
     def suggest(self, path: str) -> dict:
@@ -80,31 +76,31 @@ class FoldersApi(ApiArea):
             _check_new(db, folder)
             db.add_folder(folder, name)
             db.commit()
-            return _entry(db, db.get_playlist(folder))
+            return folder_entry(db, db.get_playlist(folder))
 
     def rename(self, folder: str, name: str) -> dict:
         """Ändert den Playlist-Namen. Existiert die Playlist schon, wird sie sofort auch auf
         Spotify umbenannt; scheitert das, bleibt der alte Name auch lokal stehen."""
         name = _clean_name(name)
         with self._ctx.db() as db:
-            row = _existing(db, folder)
+            row = check_folder(db, folder)
             if row["playlist_id"]:
-                with _spotify_errors("Die Playlist konnte auf Spotify nicht umbenannt werden"):
-                    self._ctx.spotify().update_playlist(row["playlist_id"], name=name)
+                with self._spotify("Die Playlist konnte auf Spotify nicht umbenannt werden", not_found=GONE) as client:
+                    client.update_playlist(row["playlist_id"], name=name)
             db.rename_folder(folder, name)
             db.commit()
-            return _entry(db, db.get_playlist(folder))
+            return folder_entry(db, db.get_playlist(folder))
 
     def remove(self, folder: str, delete_playlist: bool) -> None:
         """Entfernt den Ordner aus djsync. Die Oberfläche fragt jedes Mal, ob die Playlist auf
         Spotify bleibt (delete_playlist=False) oder entfernt wird. Zuordnungen bleiben erhalten,
         weil sie für den Track in allen Ordnern gelten."""
         with self._ctx.db() as db:
-            row = _existing(db, folder)
+            row = check_folder(db, folder)
             if delete_playlist and row["playlist_id"]:
-                with _spotify_errors("Die Playlist konnte auf Spotify nicht entfernt werden"):
+                with self._spotify("Die Playlist konnte auf Spotify nicht entfernt werden") as client:
                     try:
-                        self._ctx.spotify().unfollow_playlist(row["playlist_id"])
+                        client.unfollow_playlist(row["playlist_id"])
                     except SpotifyError as e:
                         if e.status != 404:  # schon weg: Ziel erreicht
                             raise
@@ -128,30 +124,6 @@ def install_drop(window, events) -> None:
     # preventDefault bei dragover/drop, sonst öffnet das Fenster die Datei selbst
     doc.events.dragover += DOMEventHandler(lambda e: None, True, True, debounce=500)
     doc.events.drop += DOMEventHandler(on_drop, True, True)
-
-
-def _existing(db: Database, folder: str):
-    row = db.get_playlist(folder)
-    if row is None:
-        raise ApiError(f"Der Ordner „{folder}“ ist nicht in djsync.")
-    return row
-
-
-@contextmanager
-def _spotify_errors(what: str) -> Iterator[None]:
-    """Übersetzt Fehler beim Zugriff auf Spotify in eine anzeigbare ApiError."""
-    try:
-        yield
-    except SpotifyError as e:
-        if e.status == 404:
-            raise ApiError(f"{what}: Spotify kennt die Playlist nicht mehr.") from e
-        if e.status == 429:  # Rate-Limit/Kontingent: Meldung ist schon verständlich
-            raise ApiError(f"{what}: {e}") from e
-        raise ApiError(f"{what}: Spotify meldet einen Fehler ({e.status or 'unbekannt'}).") from e
-    except (AuthError, ConfigError) as e:
-        raise ApiError(f"{what}: {e}") from e
-    except httpx.HTTPError as e:
-        raise ApiError(f"{what}: Spotify ist nicht erreichbar. Besteht eine Internetverbindung?") from e
 
 
 def _check_dir(folder: str) -> None:

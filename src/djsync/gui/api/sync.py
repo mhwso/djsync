@@ -26,14 +26,9 @@ import os
 import threading
 from dataclasses import dataclass, field
 
-import httpx
-
 from ... import sync_phases as phases
-from ...auth import AuthError
-from ...config import ConfigError
-from ...spotify import SpotifyError
-from .base import ApiArea, ApiError
-from .folders import PLAYLIST_URL, _entry
+from .base import ApiArea, ApiError, check_folder, check_reachable, spotify_message
+from .folders import PLAYLIST_URL, folder_entry
 
 RUNNING, READY, APPLYING, CANCELLED, FAILED = "running", "ready", "applying", "cancelled", "failed"
 # Solange ein Sync in einem dieser Zustände ist, wird kein weiterer gestartet
@@ -66,10 +61,8 @@ class SyncApi(ApiArea):
         retry: auch kürzlich erfolglos gesuchte Tracks erneut suchen.
         """
         with self._ctx.db() as db:
-            if db.get_playlist(folder) is None:
-                raise ApiError(f"Der Ordner „{folder}“ ist nicht in djsync.")
-        if not os.path.isdir(folder):
-            raise ApiError(f"Der Ordner „{folder}“ ist nicht erreichbar. Ist das Laufwerk eingebunden?")
+            check_folder(db, folder)
+        check_reachable(folder)
         with self._lock:
             current = self._session
             if current and current.state in BUSY:
@@ -85,8 +78,9 @@ class SyncApi(ApiArea):
     def status(self) -> dict | None:
         """Stand des aktuellen Syncs oder None, wenn keiner läuft:
         {folder, state, progress: {step, done, total} | None, error, searched}."""
-        session = self._session
-        return _status(session) if session else None
+        with self._lock:
+            session = self._session
+            return _status(session) if session else None
 
     def cancel(self) -> dict | None:
         """Bricht den laufenden Sync ab, sobald die aktuelle Spotify-Anfrage fertig ist (Zustand
@@ -107,7 +101,8 @@ class SyncApi(ApiArea):
     def summary(self) -> dict:
         """Zusammenfassung nach Treffer-Status (Zustand „ready“):
         {folder, found, fresh, searched, counts: {status: n}, open: [{file, fingerprint}]}."""
-        session = self._ready()
+        with self._lock:
+            session = self._ready()
         with self._ctx.db() as db:
             summary = phases.summarize_run(session.run, db)
         return {
@@ -123,7 +118,8 @@ class SyncApi(ApiArea):
         """Änderungsplan (Zustand „ready“), jedes Mal neu aus den aktuellen Zuordnungen berechnet:
         {folder, create, name, rename, playlist_lost, added, removed: [{id, label}], reordered,
          total, needs_write}."""
-        session = self._ready()
+        with self._lock:
+            session = self._ready()
         with self._ctx.db() as db:
             change = phases.plan_changes(session.run, db)
         run, plan = session.run, change.plan
@@ -153,9 +149,10 @@ class SyncApi(ApiArea):
                 change = phases.plan_changes(session.run, db)
                 client = self._ctx.spotify()
                 playlist_id = phases.apply_changes(session.run, change, db, client)
-                entry = _entry(db, db.get_playlist(session.folder))
+                entry = folder_entry(db, db.get_playlist(session.folder))
         except Exception as e:
-            session.state = READY
+            with self._lock:
+                session.state = READY
             raise ApiError("Die Änderungen konnten nicht übertragen werden: " + _message(e)) from e
         finally:
             if client:
@@ -178,6 +175,7 @@ class SyncApi(ApiArea):
     # ---- intern -----------------------------------------------------------
 
     def _ready(self) -> _Session:
+        """Der eingelesene Sync; nur unter self._lock aufrufen."""
         session = self._session
         if session is None or session.state != READY:
             raise ApiError("Es gibt keinen eingelesenen Sync. Bitte den Sync neu starten.")
@@ -188,30 +186,33 @@ class SyncApi(ApiArea):
         events = self._ctx.events
 
         def progress(step: str, done: int, total: int) -> None:
-            session.progress = {"step": step, "done": done, "total": total}
-            events.emit("sync.progress", {"folder": session.folder, **session.progress})
+            with self._lock:
+                session.progress = {"step": step, "done": done, "total": total}
+            events.emit("sync.progress", {"folder": session.folder, "step": step, "done": done, "total": total})
 
         client = None
         try:
             cfg = self._ctx.load_config()
             client = self._ctx.spotify(cfg)
             with self._ctx.db() as db:  # eigene Verbindung: SQLite-Verbindungen bleiben in ihrem Thread
-                cancel = session.cancel.is_set
-                run = phases.read_folder(session.folder, db, cfg, on_progress=progress, cancel=cancel)
-                phases.load_playlist(run, db, client, on_progress=progress, cancel=cancel)
-                session.searched = phases.search_tracks(
-                    run, db, client, cfg, retry=retry, on_progress=progress, cancel=cancel
+                run = phases.prepare(
+                    session.folder, db, client, cfg, retry=retry, on_progress=progress, cancel=session.cancel.is_set
                 )
         except phases.SyncCancelled:
-            session.state = CANCELLED
+            with self._lock:
+                session.state = CANCELLED
             events.emit("sync.cancelled", {"folder": session.folder})
         except Exception as e:  # jeder Fehler muss in der Oberfläche ankommen, nicht im Thread verschwinden
-            session.error = _message(e)
-            session.state = FAILED
-            events.emit("sync.failed", {"folder": session.folder, "message": session.error})
+            message = _message(e)
+            with self._lock:
+                session.error = message
+                session.state = FAILED
+            events.emit("sync.failed", {"folder": session.folder, "message": message})
         else:
-            session.run = run
-            session.state = READY
+            with self._lock:
+                session.run = run
+                session.searched = run.searched
+                session.state = READY
             events.emit("sync.ready", {"folder": session.folder})
         finally:
             if client:
@@ -230,16 +231,6 @@ def _status(session: _Session) -> dict:
 
 def _message(e: Exception) -> str:
     """Verständliche Meldung für Fehler beim Sync."""
-    if isinstance(e, phases.EmptyFolderError | ConfigError):
+    if isinstance(e, phases.EmptyFolderError):
         return str(e)
-    if isinstance(e, AuthError):
-        return "Die Anmeldung bei Spotify ist abgelaufen oder ungültig. Bitte über die Einrichtung neu anmelden."
-    if isinstance(e, SpotifyError):
-        if e.status == 429:  # Rate-Limit bzw. Kontingent: Meldung ist schon verständlich
-            return str(e)
-        if e.status in (401, 403):
-            return "Spotify verweigert den Zugriff. Bitte über die Einrichtung neu anmelden."
-        return f"Spotify meldet einen Fehler ({e.status or 'unbekannt'}). Bitte später erneut versuchen."
-    if isinstance(e, httpx.HTTPError):
-        return "Spotify ist nicht erreichbar. Besteht eine Internetverbindung?"
-    return f"Unerwarteter Fehler: {e}"
+    return spotify_message(e) or f"Unerwarteter Fehler: {e}"

@@ -1,5 +1,6 @@
 """Review eines Ordners über die API-Schicht der GUI."""
 
+import httpx
 import pytest
 from fake_spotify import track
 
@@ -314,3 +315,64 @@ def test_bulk_search_can_be_cancelled(api, folder, spotify):
     assert result["cancelled"] is True
     assert result["done"] < 2
     assert statuses(api, folder)["Nobody - Missing.mp3"] == "not_found"
+
+
+# ---- Fehler beim Zugriff auf Spotify ------------------------------------------
+
+
+def offline(request):
+    raise httpx.ConnectError("offline", request=request)
+
+
+def test_link_without_internet_is_reported_clearly(api, folder, spotify):
+    missing = fingerprint(api, folder, "Nobody - Missing.mp3")
+    spotify.on_request = offline
+
+    with pytest.raises(ApiError, match="nicht erreichbar"):
+        api.review.accept_link(folder, missing, f"spotify:track:{LINK_ID}")
+    spotify.on_request = None
+    assert api.review.track(folder, missing)["status"] == "not_found"  # unverändert
+
+
+def test_link_without_login_asks_to_sign_in_again(api, folder, paths):
+    missing = fingerprint(api, folder, "Nobody - Missing.mp3")
+    paths.token_file.unlink()
+
+    with pytest.raises(ApiError, match="Einrichtung"):
+        api.review.accept_link(folder, missing, f"spotify:track:{LINK_ID}")
+
+
+def test_link_without_client_id_is_reported_clearly(api, folder, paths):
+    missing = fingerprint(api, folder, "Nobody - Missing.mp3")
+    paths.config_file.unlink()
+
+    with pytest.raises(ApiError):
+        api.review.accept_link(folder, missing, f"spotify:track:{LINK_ID}")
+
+
+def test_bulk_search_without_internet_is_reported_clearly(api, folder, spotify):
+    fps = all_fingerprints(api, folder)
+    spotify.on_request = offline
+
+    with pytest.raises(ApiError, match="nicht erreichbar"):
+        api.review.bulk_search(folder, [fps["Nobody - Missing.mp3"]])
+
+
+def test_spotify_connections_are_closed_after_use(api, folder, ctx, monkeypatch):
+    clients = []
+    open_client = ctx.spotify
+
+    def recording(*args, **kwargs):
+        clients.append(open_client(*args, **kwargs))
+        return clients[-1]
+
+    monkeypatch.setattr(ctx, "spotify", recording)
+    fps = all_fingerprints(api, folder)
+    missing = fps["Nobody - Missing.mp3"]
+
+    api.review.bulk_search(folder, [missing])
+    with pytest.raises(ApiError):
+        api.review.accept_link(folder, missing, "https://example.com/nix")
+
+    assert len(clients) == 2
+    assert all(c.http.is_closed for c in clients)
