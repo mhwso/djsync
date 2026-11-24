@@ -4,6 +4,7 @@
 
 import folders from "./folders.js";
 import review from "./review/index.js";
+import setup from "./setup.js";
 import settings from "./settings.js";
 
 export const DEFAULT_VIEW = "folders";
@@ -11,5 +12,6 @@ export const DEFAULT_VIEW = "folders";
 export const views = {
   folders,
   review,
+  setup,
   settings,
 };
