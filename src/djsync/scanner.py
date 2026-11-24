@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from .db import Database
-from .filenames import parse_filename
+from .filenames import parse_filename, to_internal_path
 from .matching import fingerprint
 from .models import LocalFile
 
@@ -22,7 +22,7 @@ def iter_audio_files(folder: str, extensions) -> list[str]:
             if name.startswith("."):
                 continue
             if os.path.splitext(name)[1].lower() in exts:
-                result.append(os.path.join(root, name))
+                result.append(to_internal_path(os.path.join(root, name)))
     return sorted(result)
 
 

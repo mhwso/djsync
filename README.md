@@ -4,23 +4,29 @@ Spiegelt einen lokalen Musikordner als Spotify-Playlist – ein Ordner, eine Pla
 Der Ordner ist die einzige Quelle: neue Dateien landen in der Playlist, gelöschte
 verschwinden daraus, die neuesten Downloads stehen oben.
 
-## Einrichtung
+## Windows: djsync.exe (ohne Installation)
+
+Für alle, die kein Terminal nutzen wollen – siehe [ANLEITUNG.md](ANLEITUNG.md) zum Weitergeben.
+
+1. `djsync.exe` aus dem neuesten [Release](../../releases/latest) herunterladen.
+2. Doppelklick → djsync führt durch die Einrichtung (eigene Spotify-App, Anmeldung).
+3. Musikordner ins Fenster ziehen, Enter – oder den Ordner direkt auf `djsync.exe` ziehen.
+
+Alle Befehle unten funktionieren auch mit der .exe (`djsync.exe sync "D:\Musik\House"`).
+
+## Einrichtung (Entwicklung, WSL/Linux)
 
 1. **uv installieren** (falls noch nicht vorhanden): https://docs.astral.sh/uv/
 2. **Spotify-App** im [Developer-Dashboard](https://developer.spotify.com/dashboard):
    - Redirect-URI `http://127.0.0.1:8888/callback` eintragen
    - Client-ID kopieren (ein Client-Secret wird dank PKCE nicht benötigt)
    - Hinweis: Apps im Development Mode benötigen ein aktives Premium-Abo des App-Besitzers.
-3. **Client-ID hinterlegen** – in `.env` im Projektordner (wird von git ignoriert):
-   ```bash
-   cp .env.example .env   # dann SPOTIFY_CLIENT_ID eintragen
-   ```
-   Optional: `config.example.toml` nach `~/.config/djsync/config.toml` kopieren.
-4. **Installieren und anmelden:**
+3. **Installieren, Client-ID hinterlegen und anmelden:**
    ```bash
    uv tool install --editable .
-   djsync login
+   djsync setup      # fragt die Client-ID ab, speichert sie in config.toml und meldet an
    ```
+   Alternativ zur Entwicklung: `.env` im Projektordner mit `SPOTIFY_CLIENT_ID=…` (siehe `.env.example`).
 
 ## Benutzung
 
@@ -58,12 +64,24 @@ umbenannte Dateien und Duplikate in anderen Ordnern übernehmen sie automatisch.
 
 ## Daten
 
-- Client-ID: `.env` im Projektordner
-- Konfiguration: `~/.config/djsync/config.toml`
-- Datenbank und Login-Token: `~/.local/share/djsync/`
+| | Linux/WSL | Windows |
+|---|---|---|
+| Konfiguration inkl. Client-ID | `~/.config/djsync/config.toml` | `%APPDATA%\djsync\config.toml` |
+| Datenbank und Login-Token | `~/.local/share/djsync/` | `%APPDATA%\djsync\` |
+
+Die Client-ID wird in dieser Reihenfolge gesucht: Umgebungsvariable `SPOTIFY_CLIENT_ID`,
+`.env` im Projektordner, `client_id` in `config.toml`.
 
 ## Entwicklung
 
 ```bash
 uv run pytest
 ```
+
+### Windows-Release
+
+Ein Versions-Tag (`v0.2.0` usw.) baut per GitHub Actions `djsync.exe` und hängt sie an ein
+Release. Der Workflow lässt sich auch manuell unter „Actions“ starten; die .exe liegt dann
+als Artefakt am Lauf.
+
+Lokal unter Windows (PowerShell, Python 3.11+): `.\scripts\build_exe.ps1` → `dist\djsync.exe`.

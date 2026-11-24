@@ -1,22 +1,33 @@
 from __future__ import annotations
 
 import os
+import re
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
+
+
+IS_WINDOWS = sys.platform == "win32"
 
 
 def _xdg(var: str, default: str) -> Path:
     return Path(os.environ.get(var) or Path.home() / default) / "djsync"
 
 
-CONFIG_DIR = _xdg("XDG_CONFIG_HOME", ".config")
-DATA_DIR = _xdg("XDG_DATA_HOME", ".local/share")
+if IS_WINDOWS:
+    # %APPDATA%\djsync – Konfiguration, Datenbank und Login-Token an einem Ort
+    CONFIG_DIR = DATA_DIR = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming") / "djsync"
+else:
+    CONFIG_DIR = _xdg("XDG_CONFIG_HOME", ".config")
+    DATA_DIR = _xdg("XDG_DATA_HOME", ".local/share")
 
 CONFIG_FILE = CONFIG_DIR / "config.toml"
 # Projektordner (bei `uv run` bzw. `uv tool install --editable .`): src/djsync/config.py → ../../
+# In der gebauten .exe gibt es ihn nicht – dann zählt nur config.toml.
 PROJECT_DIR = Path(__file__).resolve().parents[2]
 PROJECT_ENV_FILE = PROJECT_DIR / ".env"
+_CLIENT_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 DB_FILE = DATA_DIR / "djsync.db"
 TOKEN_FILE = DATA_DIR / "token.json"
 
@@ -73,13 +84,15 @@ def load_config() -> Config:
         with CONFIG_FILE.open("rb") as fh:
             data = tomllib.load(fh)
 
-    # Die Client-ID kommt ausschließlich aus der Projekt-.env.
-    client_id = env.get("SPOTIFY_CLIENT_ID")
+    # Reihenfolge: Umgebungsvariable, Projekt-.env (Entwicklung), config.toml (`djsync setup`)
+    client_id = (
+        os.environ.get("SPOTIFY_CLIENT_ID")
+        or env.get("SPOTIFY_CLIENT_ID")
+        or str(data.pop("client_id", "") or "")
+    ).strip()
+    data.pop("client_id", None)
     if not client_id:
-        raise ConfigError(
-            f"Keine Spotify Client-ID gefunden. Lege {PROJECT_ENV_FILE} an mit:\n"
-            "  SPOTIFY_CLIENT_ID=<deine Client-ID>"
-        )
+        raise ConfigError("Keine Spotify Client-ID eingerichtet. Bitte zuerst `djsync setup` ausführen.")
 
     cfg = Config(client_id=client_id)
     cfg.redirect_uri = (
@@ -95,3 +108,27 @@ def load_config() -> Config:
             setattr(cfg, key, type(getattr(cfg, key))(data.pop(key)))
     cfg.extra = data
     return cfg
+
+
+def has_client_id() -> bool:
+    try:
+        load_config()
+    except ConfigError:
+        return False
+    return True
+
+
+def is_valid_client_id(value: str) -> bool:
+    return bool(_CLIENT_ID_RE.match(value.strip().lower()))
+
+
+def save_client_id(client_id: str, path: Path = CONFIG_FILE) -> None:
+    """Schreibt bzw. ersetzt `client_id = "…"` in config.toml, Rest der Datei bleibt erhalten."""
+    line = f'client_id = "{client_id.strip()}"'
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    if re.search(r"(?m)^\s*client_id\s*=.*$", text):
+        text = re.sub(r"(?m)^\s*client_id\s*=.*$", line, text, count=1)
+    else:
+        text = line + "\n" + text
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")

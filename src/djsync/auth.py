@@ -6,7 +6,6 @@ import base64
 import hashlib
 import json
 import os
-import platform
 import secrets
 import shutil
 import subprocess
@@ -18,6 +17,8 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
 
+from .filenames import is_wsl
+
 AUTHORIZE_URL = "https://accounts.spotify.com/authorize"
 TOKEN_URL = "https://accounts.spotify.com/api/token"
 LOGIN_TIMEOUT_S = 180
@@ -25,10 +26,6 @@ LOGIN_TIMEOUT_S = 180
 
 class AuthError(Exception):
     pass
-
-
-def is_wsl() -> bool:
-    return "microsoft" in platform.release().lower()
 
 
 def open_browser(url: str) -> None:
