@@ -23,7 +23,9 @@ from .review import pending_reviews
 from .scanner import scan_folder
 from .spotify import SpotifyClient
 from .sync import (
+    Cancelled,
     build_plan,
+    cancel_check,
     description_text,
     match_files,
     playlist_files,
@@ -37,8 +39,8 @@ ProgressFn = Callable[[str, int, int], None]
 CancelFn = Callable[[], bool]
 
 
-class SyncCancelled(Exception):
-    """Der Sync wurde abgebrochen; die Playlist auf Spotify ist unverändert."""
+# Der Sync wurde abgebrochen; die Playlist auf Spotify ist unverändert.
+SyncCancelled = Cancelled
 
 
 class EmptyFolderError(Exception):
@@ -64,6 +66,7 @@ class SyncRun:
     found: int = 0  # Audiodateien im Ordner
     fresh: int = 0  # davon neu eingelesen
     stored_name: str | None = None  # in djsync gespeicherter Playlist-Name (z. B. beim Hinzufügen gewählt)
+    searched: int = 0  # bei diesem Sync auf Spotify gesuchte Tracks (nach `prepare`)
 
 
 @dataclass(frozen=True)
@@ -90,14 +93,6 @@ def _noop(step: str, done: int, total: int) -> None:
     pass
 
 
-def _checker(cancel: CancelFn | None) -> Callable[[], None]:
-    def check() -> None:
-        if cancel and cancel():
-            raise SyncCancelled()
-
-    return check
-
-
 def read_folder(
     folder: str,
     db: Database,
@@ -112,7 +107,7 @@ def read_folder(
         SyncCancelled: Abbruch über cancel.
     """
     report = on_progress or _noop
-    check = _checker(cancel)
+    check = cancel_check(cancel)
 
     def scan_progress(done: int, total: int) -> None:
         check()
@@ -147,7 +142,7 @@ def load_playlist(
         SyncCancelled: Abbruch über cancel.
     """
     report = on_progress or _noop
-    check = _checker(cancel)
+    check = cancel_check(cancel)
     row = db.get_playlist(run.folder)
     playlist_id = row["playlist_id"] if row else None
     playlist = None
@@ -194,7 +189,7 @@ def search_tracks(
         cfg,
         retry=retry,
         on_progress=lambda done, total: report("search", done, total),
-        before_request=_checker(cancel),
+        before_request=cancel_check(cancel),
     )
 
 
@@ -211,7 +206,7 @@ def prepare(
     """Phase 1 komplett: einlesen, Playlist laden, Tracks suchen. Ändert nichts auf Spotify."""
     run = read_folder(folder, db, cfg, on_progress=on_progress, cancel=cancel)
     load_playlist(run, db, client, on_progress=on_progress, cancel=cancel)
-    search_tracks(run, db, client, cfg, retry=retry, on_progress=on_progress, cancel=cancel)
+    run.searched = search_tracks(run, db, client, cfg, retry=retry, on_progress=on_progress, cancel=cancel)
     return run
 
 

@@ -100,6 +100,20 @@ def needs_search(record: MatchRecord | None, cfg: Config, retry: bool = False) -
     return datetime.now(timezone.utc) - searched > timedelta(days=cfg.retry_missing_days)
 
 
+class Cancelled(Exception):
+    """Abbruch über eine cancel-Funktion (siehe `cancel_check`); Gespeichertes bleibt erhalten."""
+
+
+def cancel_check(cancel: Callable[[], bool] | None) -> Callable[[], None]:
+    """Prüffunktion für before_request: wirft Cancelled, sobald cancel() wahr ist."""
+
+    def check() -> None:
+        if cancel and cancel():
+            raise Cancelled()
+
+    return check
+
+
 def match_files(
     files: list[tuple[LocalFile, str | None]],
     db: Database,

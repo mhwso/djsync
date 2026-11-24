@@ -24,7 +24,7 @@ from .models import (
     MatchRecord,
 )
 from .spotify import SpotifyClient, SpotifyError
-from .sync import match_files
+from .sync import Cancelled, cancel_check, match_files
 
 _LINK_RE = re.compile(r"(?:open\.spotify\.com/(?:intl-[a-z]+/)?track/|spotify:track:)([A-Za-z0-9]{22})")
 _ID_RE = re.compile(r"^[A-Za-z0-9]{22}$")
@@ -185,10 +185,6 @@ def mark_all_not_on_spotify(db: Database, folder: str, fingerprints: list[str]) 
     return BulkResult(done=len(todo), skipped=unknown + len(tracks) - len(todo))
 
 
-class _Cancelled(Exception):
-    pass
-
-
 def search_again(
     db: Database,
     client: SpotifyClient,
@@ -217,10 +213,6 @@ def search_again(
         if on_progress:
             on_progress(n, total)
 
-    def before_request() -> None:
-        if cancel and cancel():
-            raise _Cancelled
-
     try:
         match_files(
             [(t.file, t.fingerprint) for t in todo],
@@ -229,9 +221,9 @@ def search_again(
             cfg,
             retry=True,
             on_progress=progress,
-            before_request=before_request,
+            before_request=cancel_check(cancel),
         )
-    except _Cancelled:
+    except Cancelled:
         return BulkResult(done=done, skipped=skipped, cancelled=True)
     return BulkResult(done=len(todo), skipped=skipped)
 
