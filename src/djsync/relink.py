@@ -27,9 +27,9 @@ def relink_folder(db: Database, old: str, new: str) -> int:
     """
     if not os.path.isdir(new):
         raise RelinkError(f"Neuer Ordner nicht erreichbar: {new}")
-    if db.get_playlist(new):
+    if db.get_folder(new):
         raise RelinkError(f"Der Ordner {new} ist bereits mit einer Playlist verknüpft.")
-    if not db.relink_playlist(old, new):
+    if not db.move_folder(old, new):
         raise UnknownFolderError(f"Der Ordner {old} ist kein Ordner von djsync.")
     moved = db.move_files(old, new)
     db.commit()

@@ -53,7 +53,7 @@ def test_sync_creates_new_playlist(env, tmp_path):
     pl = spotify.playlists[playlist_id]
     assert pl["name"] == "DJSYNC - Techno"
     assert pl["items"] == ["id_beta", "id_alpha"]  # neueste Datei zuerst
-    assert db.get_playlist(str(folder))["playlist_id"] == playlist_id
+    assert db.get_folder(str(folder))["playlist_id"] == playlist_id
     assert db.managed_tracks(playlist_id) == {"id_alpha", "id_beta"}
 
 

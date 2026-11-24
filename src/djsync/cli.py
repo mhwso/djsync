@@ -171,7 +171,7 @@ def cmd_sync(args) -> None:
 
 
 def _review_scope(db: Database, folder_arg: str | None) -> list[tuple[LocalFile, str | None]]:
-    folders = [resolve_folder(folder_arg)] if folder_arg else [r["folder"] for r in db.all_playlists()]
+    folders = [resolve_folder(folder_arg)] if folder_arg else [r["folder"] for r in db.synced_folders()]
     files = []
     for folder in folders:
         files.extend(db.files_under(folder).values())

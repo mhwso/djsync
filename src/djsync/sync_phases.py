@@ -143,7 +143,7 @@ def load_playlist(
     """
     report = on_progress or _noop
     check = cancel_check(cancel)
-    row = db.get_playlist(run.folder)
+    row = db.get_folder(run.folder)
     playlist_id = row["playlist_id"] if row else None
     playlist = None
     current: list[str] = []
@@ -239,7 +239,7 @@ def apply_changes(run: SyncRun, change: ChangePlan, db: Database, client: Spotif
     playlist_id = run.playlist_id
     if playlist_id is None:
         playlist_id = client.create_playlist(change.new_name, description_text(), public=False)
-        db.save_playlist(run.folder, playlist_id, change.new_name)
+        db.save_folder_playlist(run.folder, playlist_id, change.new_name)
         db.commit()
         run.playlist_id, run.playlist_name = playlist_id, change.new_name
     else:

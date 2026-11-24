@@ -149,7 +149,7 @@ class SyncApi(ApiArea):
                 change = phases.plan_changes(session.run, db)
                 client = self._ctx.spotify()
                 playlist_id = phases.apply_changes(session.run, change, db, client)
-                entry = folder_entry(db, db.get_playlist(session.folder))
+                entry = folder_entry(db, db.get_folder(session.folder))
         except Exception as e:
             with self._lock:
                 session.state = READY
