@@ -1,0 +1,29 @@
+/* Update-Hinweis unter der Kopfzeile (js/update.js) */
+
+.update-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 20px;
+  background: var(--ok-bg);
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+}
+
+.update-notice > span { flex: 1; }
+
+.update-notice a { color: var(--ok); font-weight: 600; }
+
+.update-close {
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.update-close:hover { background: var(--surface-2); color: var(--text); }

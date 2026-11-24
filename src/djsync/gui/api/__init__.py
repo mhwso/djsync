@@ -24,6 +24,7 @@ from .folders import FoldersApi
 from .review import ReviewApi
 from .relink import RelinkApi
 from .settings import SettingsApi
+from .updates import UpdatesApi
 
 __all__ = ["Api", "ApiArea", "ApiError"]
 
@@ -35,3 +36,4 @@ class Api:
         self.review = ReviewApi(ctx)
         self.relink = RelinkApi(ctx)
         self.settings = SettingsApi(ctx)
+        self.updates = UpdatesApi(ctx)
