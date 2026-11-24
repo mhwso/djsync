@@ -23,8 +23,10 @@ from .base import ApiArea, ApiError
 from .folders import FoldersApi
 from .player import PlayerApi
 from .review import ReviewApi
+from .setup import SetupApi
 from .relink import RelinkApi
 from .settings import SettingsApi
+from .sync import SyncApi
 from .updates import UpdatesApi
 
 __all__ = ["Api", "ApiArea", "ApiError"]
@@ -36,6 +38,8 @@ class Api:
         self.folders = FoldersApi(ctx)
         self.review = ReviewApi(ctx)
         self.player = PlayerApi(ctx)
+        self.setup = SetupApi(ctx)
         self.relink = RelinkApi(ctx)
         self.settings = SettingsApi(ctx)
+        self.sync = SyncApi(ctx)
         self.updates = UpdatesApi(ctx)

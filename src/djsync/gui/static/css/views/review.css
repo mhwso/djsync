@@ -56,6 +56,8 @@
 .review-item:hover { background: var(--surface-2); }
 .review-item.selected { background: var(--surface-2); border-left-color: var(--accent); }
 .review-item.decided .review-item-name { color: var(--muted); }
+.review-item.cursor { outline: 1px dotted var(--accent); outline-offset: -2px; }
+.review-list { user-select: none; } /* Umschalt-Klick soll keinen Text markieren */
 
 .review-item-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -151,3 +153,7 @@ kbd {
   .review-side { position: static; }
   .review-list-wrap { max-height: 260px; }
 }
+
+/* Mehrfachauswahl: Massenoperationen */
+.review-bulk-progress { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+.review-bulk-progress progress { flex: 1; min-width: 120px; accent-color: var(--accent); }
