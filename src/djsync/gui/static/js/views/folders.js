@@ -5,6 +5,10 @@ import { api, errorMessage, on } from "../api.js";
 import { h } from "../dom.js";
 import { addFolder, chooseFolder, removeFolder, renameFolder } from "../folder-dialogs.js";
 import { absoluteTime, plural, relativeTime } from "../format.js";
+import { relinkDialog } from "../relink.js";
+
+// Ordner, für die Relink in dieser Sitzung schon automatisch angeboten wurde
+const offeredRelink = new Set();
 
 function lastSync(folder) {
   if (folder.last_sync) {
@@ -34,6 +38,16 @@ function folderActions(folder, reload) {
   return h(
     "div",
     { class: "folder-actions" },
+    h(
+      "button",
+      {
+        type: "button",
+        class: "button small",
+        title: "Verschobenen Ordner mit neuem Pfad verknüpfen",
+        onclick: run((f) => relinkDialog(f.folder, { unreachable: !f.reachable })),
+      },
+      "Relink …",
+    ),
     h("button", { type: "button", class: "button small", onclick: run(renameFolder) }, "Umbenennen"),
     h("button", { type: "button", class: "button small", onclick: run(removeFolder) }, "Entfernen"),
   );
@@ -58,10 +72,22 @@ function folderRow(folder, reload) {
   );
 }
 
+// Nicht erreichbare Ordner: Relink einmal pro Sitzung automatisch anbieten
+async function offerRelink(folders, refresh) {
+  for (const folder of folders) {
+    if (folder.reachable || offeredRelink.has(folder.folder)) continue;
+    offeredRelink.add(folder.folder);
+    if (await relinkDialog(folder.folder, { unreachable: true })) {
+      refresh();
+      return;
+    }
+  }
+}
+
 export default {
   title: "Ordner",
 
-  async render(root) {
+  async render(root, params, ctx) {
     const body = h("div", { class: "view-body" }, h("p", { class: "muted" }, "Lade Ordner …"));
     const added = (changed) => changed && load();
     const addButton = h(
@@ -95,6 +121,7 @@ export default {
         h("ul", { class: "folder-list" }, folders.map((f) => folderRow(f, load))),
         h("p", { class: "muted drop-hint" }, "Weitere Ordner einfach ins Fenster ziehen."),
       );
+      offerRelink(folders, load);
     }
 
     // Ins Fenster gezogene Ordner meldet Python (Browser kennen keine vollen Pfade)

@@ -13,6 +13,7 @@ from .db import Database
 from .filenames import normalize_folder
 from .models import APPROXIMATE, NOT_FOUND, NOT_ON_SPOTIFY, LocalFile
 from .plan import Plan
+from .relink import RelinkError, relink_folder
 from .review import pending_reviews, run_review
 from .spotify import SpotifyClient, SpotifyError
 from .sync import summarize
@@ -222,15 +223,11 @@ def cmd_status(args) -> None:
 
 def cmd_relink(args) -> None:
     old, new = resolve_folder(args.old), resolve_folder(args.new)
-    if not os.path.isdir(new):
-        raise Abort(f"Neuer Ordner nicht erreichbar: {new}")
     _, db, _ = setup(need_client=False)
-    if db.get_playlist(new):
-        raise Abort(f"Der Ordner {new} ist bereits mit einer Playlist verknüpft.")
-    if not db.relink_playlist(old, new):
-        raise Abort(f"Der Ordner {old} ist mit keiner Playlist verknüpft.")
-    moved = db.move_files(old, new)
-    db.commit()
+    try:
+        moved = relink_folder(db, old, new)
+    except RelinkError as e:
+        raise Abort(str(e)) from None
     ui.success(f"Verknüpfung aktualisiert ({moved} Dateien übernommen). Jetzt [bold]djsync sync \"{new}\"[/] ausführen.")
 
 
