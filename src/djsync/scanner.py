@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
-from . import ui
 from .db import Database
 from .filenames import parse_filename, to_internal_path
 from .matching import fingerprint
@@ -82,34 +83,48 @@ def load_file(path: str, st: os.stat_result) -> LocalFile:
     )
 
 
-def scan_folder(folder: str, db: Database, extensions) -> list[tuple[LocalFile, str | None]]:
-    """Gibt (Datei, Fingerprint) für alle Audiodateien zurück und hält den DB-Cache aktuell."""
+@dataclass
+class ScanResult:
+    files: list[tuple[LocalFile, str | None]]  # (Datei, Fingerprint)
+    found: int  # Anzahl Audiodateien im Ordner
+    fresh: int  # davon neu eingelesen (nicht aus dem Cache)
+
+
+def scan_folder(
+    folder: str,
+    db: Database,
+    extensions,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> ScanResult:
+    """Liest alle Audiodateien ein und hält den DB-Cache aktuell – ohne Terminal-Ausgabe.
+
+    on_progress(erledigt, gesamt) kommt einmal nach dem Auflisten (0, gesamt) und vor jeder Datei;
+    eine Ausnahme aus dem Rückruf bricht das Einlesen ab.
+    """
+    report = on_progress or (lambda done, total: None)
     cached = db.files_under(folder)
-    with ui.spinner("Suche Audiodateien …"):
-        paths = iter_audio_files(folder, extensions)
+    paths = iter_audio_files(folder, extensions)
+    report(0, len(paths))
     result = []
     fresh = 0
-    with ui.progress("Lese Dateien", len(paths)) as advance:
-        for path in paths:
-            advance()
-            try:
-                st = os.stat(path)
-            except OSError:
-                continue
-            hit = cached.get(path)
-            if hit and hit[0].size == st.st_size and hit[0].mtime == st.st_mtime:
-                result.append(hit)
-                continue
-            f = load_file(path, st)
-            fp = fingerprint(f)
-            db.upsert_file(f, fp)
-            result.append((f, fp))
-            fresh += 1
-    ui.success(f"{len(paths)} Audiodateien gefunden [muted]({fresh} neu eingelesen)[/]")
+    for i, path in enumerate(paths, 1):
+        report(i, len(paths))
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        hit = cached.get(path)
+        if hit and hit[0].size == st.st_size and hit[0].mtime == st.st_mtime:
+            result.append(hit)
+            continue
+        f = load_file(path, st)
+        fp = fingerprint(f)
+        db.upsert_file(f, fp)
+        result.append((f, fp))
+        fresh += 1
 
     gone = set(cached) - set(paths)
     if gone:
         db.delete_files(gone)
     db.commit()
-    return result
-
+    return ScanResult(result, len(paths), fresh)
