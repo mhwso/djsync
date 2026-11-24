@@ -149,7 +149,10 @@ def _read_format(src: BinaryIO) -> _Format:
         if cid == b"COMM":
             comm = _parse_comm(src.read(size), is_aifc)
         elif cid == b"SSND":
-            offset = struct.unpack(">I", src.read(8)[:4])[0]
+            head = src.read(8)  # Offset und Blockgröße
+            if len(head) < 8:
+                raise AiffError("abgeschnittene AIFF-Datei")
+            offset = struct.unpack(">I", head[:4])[0]
             data_offset = start + 8 + offset
         src.seek(start + size + (size & 1))  # Chunks sind auf gerade Länge aufgefüllt
     if comm is None or data_offset is None:
