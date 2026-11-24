@@ -1,0 +1,32 @@
+/* Relink-Dialog (js/relink.js) */
+
+.relink-dialog {
+  width: min(560px, calc(100vw - 32px));
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.relink-dialog::backdrop { background: rgb(0 0 0 / 0.4); }
+
+.relink-dialog h2 { margin: 0 0 8px; font-size: 17px; font-weight: 600; }
+
+.relink-old { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.relink-row { display: flex; gap: 8px; }
+
+.relink-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.relink-error { color: var(--danger); margin: 8px 0 0; }
+
+.relink-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }

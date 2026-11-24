@@ -4,6 +4,10 @@
 import { api, errorMessage } from "../api.js";
 import { h } from "../dom.js";
 import { absoluteTime, plural, relativeTime } from "../format.js";
+import { relinkDialog } from "../relink.js";
+
+// Ordner, für die Relink in dieser Sitzung schon automatisch angeboten wurde
+const offeredRelink = new Set();
 
 function lastSync(folder) {
   if (folder.last_sync) {
@@ -26,7 +30,7 @@ function state(folder) {
   return h("div", { class: "folder-state" }, badges);
 }
 
-function folderRow(folder) {
+function folderRow(folder, refresh) {
   const name = folder.playlist_url
     ? h("a", { href: folder.playlist_url, target: "_blank", title: "Playlist in Spotify öffnen" }, folder.name)
     : folder.name;
@@ -41,13 +45,41 @@ function folderRow(folder) {
     ),
     h("div", { class: "folder-sync" }, lastSync(folder)),
     state(folder),
+    h(
+      "div",
+      { class: "folder-actions" },
+      h(
+        "button",
+        {
+          type: "button",
+          class: "button",
+          title: "Verschobenen Ordner mit neuem Pfad verknüpfen",
+          onclick: async () => {
+            if (await relinkDialog(folder.folder, { unreachable: !folder.reachable })) refresh();
+          },
+        },
+        "Relink …",
+      ),
+    ),
   );
+}
+
+// Nicht erreichbare Ordner: Relink einmal pro Sitzung automatisch anbieten
+async function offerRelink(folders, refresh) {
+  for (const folder of folders) {
+    if (folder.reachable || offeredRelink.has(folder.folder)) continue;
+    offeredRelink.add(folder.folder);
+    if (await relinkDialog(folder.folder, { unreachable: true })) {
+      refresh();
+      return;
+    }
+  }
 }
 
 export default {
   title: "Ordner",
 
-  async render(root) {
+  async render(root, params, ctx) {
     const body = h("div", { class: "view-body" }, h("p", { class: "muted" }, "Lade Ordner …"));
     root.append(h("div", { class: "view-head" }, h("h1", {}, "Ordner")), body);
 
@@ -70,6 +102,11 @@ export default {
       );
       return;
     }
-    body.replaceChildren(h("ul", { class: "folder-list" }, folders.map(folderRow)));
+    const refresh = () => {
+      root.replaceChildren();
+      this.render(root, params, ctx);
+    };
+    body.replaceChildren(h("ul", { class: "folder-list" }, folders.map((f) => folderRow(f, refresh))));
+    offerRelink(folders, refresh);
   },
 };
