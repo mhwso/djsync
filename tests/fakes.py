@@ -85,3 +85,19 @@ class RecordingEvents:
 
     def named(self, name: str) -> list:
         return [data for n, data in self.emitted if n == name]
+
+
+class RecordingWindows:
+    """Ersatz für zusätzliche pywebview-Fenster: merkt sich geöffnete Fenster; `close(i)`
+    simuliert das Schließen durch den Nutzer."""
+
+    def __init__(self):
+        self.opened: list[dict] = []
+
+    def open(self, title: str, url: str, on_closed=None) -> None:
+        self.opened.append({"title": title, "url": url, "on_closed": on_closed})
+
+    def close(self, index: int = -1) -> None:
+        on_closed = self.opened[index]["on_closed"]
+        if on_closed is not None:
+            on_closed()

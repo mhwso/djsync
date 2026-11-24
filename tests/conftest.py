@@ -5,6 +5,7 @@ Fixtures:
   spotify    – FakeSpotify (HTTP-Ebene, leerer Katalog), siehe tests/fake_spotify.py
   github     – FakeGitHub (HTTP-Ebene), siehe tests/fakes.py
   events     – RecordingEvents, fängt Fortschritts-Events der API-Schicht ab
+  windows    – RecordingWindows, fängt zusätzlich geöffnete Fenster ab (Login im Player)
   ctx        – AppContext mit echter SQLite-Datei im temporären Datenordner
   api        – das API-Objekt, wie es pywebview der Oberfläche bereitstellt
   music      – legt Musikordner mit kleinen Testdateien an
@@ -24,7 +25,7 @@ from djsync.gui.api import Api
 from djsync.gui.context import AppContext
 from djsync.spotify import SpotifyClient
 from fake_spotify import FakeSpotify
-from fakes import FakeGitHub, RecordingEvents, router, write_token
+from fakes import FakeGitHub, RecordingEvents, RecordingWindows, router, write_token
 
 CLIENT_ID = "c" * 32
 
@@ -75,12 +76,18 @@ def events() -> RecordingEvents:
 
 
 @pytest.fixture
-def ctx(paths, spotify, github, events) -> AppContext:
+def windows() -> RecordingWindows:
+    return RecordingWindows()
+
+
+@pytest.fixture
+def ctx(paths, spotify, github, events, windows) -> AppContext:
     return AppContext(
         config_file=paths.config_file,
         data_dir=paths.data_dir,
         transport=router(spotify, github),
         events=events,
+        windows=windows,
     )
 
 

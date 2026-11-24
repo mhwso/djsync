@@ -2,17 +2,15 @@
 // Entscheidungs-Knöpfen.
 //
 // renderDetail(detail, actions, link) baut die Ansicht neu auf; Zustand hält index.js.
-//   actions: { accept(id), openLink(), submitLink(text), cancelLink(), notOnSpotify(), skip(), reset() }
+//   actions: { accept(id), openLink(), submitLink(text), cancelLink(), notOnSpotify(), skip(), reset(),
+//              listen(id), listenTarget() }
 //   link:    { open, value, error } – Eingabe „Link einfügen“
 //
-// Anhören (#17): Der Platzhalter .review-player nimmt später den Player für die lokale Datei
-// auf; je Vorschlag gibt es mit candidateExtras eine Stelle für einen Abspielknopf.
+// Anhören: Der Platzhalter .review-player nimmt den Player auf (index.js). Je Vorschlag gibt es
+// einen Abspielknopf; der Vorschlag für den A/B-Vergleich (listenTarget) ist markiert.
 
 import { h } from "../../dom.js";
 import { STATUS_LABELS, duration, percent, statusClass } from "./labels.js";
-
-// Zusätzliche Knöpfe je Vorschlag (z. B. Abspielen, #17). Funktion (candidate) → Node[].
-export const candidateExtras = [];
 
 function fileFacts(d) {
   const row = (label, value) => [h("dt", {}, label), h("dd", {}, value ?? h("span", { class: "muted" }, "–"))];
@@ -28,9 +26,10 @@ function fileFacts(d) {
 }
 
 function candidateRow(c, actions) {
+  const target = actions.listenTarget() === c.id;
   return h(
     "tr",
-    { class: "review-candidate" + (c.selected ? " selected" : "") },
+    { class: "review-candidate" + (c.selected ? " selected" : "") + (target ? " listen-target" : "") },
     h("td", {}, c.number <= 5 ? h("kbd", {}, String(c.number)) : null),
     h(
       "td",
@@ -47,7 +46,18 @@ function candidateRow(c, actions) {
     h(
       "td",
       { class: "review-candidate-actions" },
-      candidateExtras.flatMap((extra) => extra(c)),
+      h(
+        "button",
+        {
+          class: "button",
+          title: target ? "Anhören (Vergleich mit a, anderer Vorschlag mit v)" : "Anhören",
+          onclick: (e) => {
+            e.currentTarget.blur(); // sonst löst die Leertaste den Knopf zusätzlich aus
+            actions.listen(c.id);
+          },
+        },
+        "▶ Anhören",
+      ),
       h("a", { class: "button", href: c.url, target: "_blank", title: "In Spotify öffnen" }, "Spotify"),
       h("button", { class: "button primary", onclick: () => actions.accept(c.id) }, "Übernehmen"),
     ),

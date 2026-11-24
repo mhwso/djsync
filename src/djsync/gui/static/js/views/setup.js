@@ -2,11 +2,17 @@
 // Erscheint beim Start automatisch, wenn Client-ID oder Anmeldung fehlen (siehe app.js),
 // und lässt sich jederzeit über die Kopfzeile erneut aufrufen (z. B. nach abgelaufener Anmeldung).
 //
-// Die Schritte stehen in STEPS. Ein weiterer Schritt (z. B. Anmeldung im eingebetteten
-// Spotify-Player) ist ein weiteres Objekt { id, title, done(status), render(ctx) }.
+// Die Schritte stehen in STEPS; jeder ist ein Objekt { id, title, done(status), render(ctx) }.
+// Der letzte Schritt (Anmeldung im eingebetteten Spotify-Player, ADR 0003) ist optional: Ohne ihn
+// laufen im Review nur 30-Sekunden-Vorschauen, die Einrichtung gilt trotzdem als abgeschlossen.
 
 import { api, errorMessage, on } from "../api.js";
 import { h } from "../dom.js";
+import { createEmbed, isPreview } from "../spotify-embed.js";
+
+// Testtrack für die Prüfung der Anmeldung (Rick Astley – Never Gonna Give You Up, 3:33)
+const TEST_TRACK = { uri: "spotify:track:4cOdK2wGLETKBW3PvgPWqT", durationMs: 213573 };
+const CHECK_TIMEOUT_MS = 15000;
 
 // Gleiche Prüfung wie in Python (config.is_valid_client_id), hier nur für sofortige Rückmeldung
 const CLIENT_ID_RE = /^[0-9a-f]{32}$/;
@@ -194,8 +200,94 @@ const loginStep = {
   },
 };
 
+const playerLoginStep = {
+  id: "player-login",
+  title: "Im Spotify-Player anmelden (optional)",
+  done: (status) => status.player_login,
+  render({ status, refresh, cleanups }) {
+    const result = h("div", { class: "setup-player-result", "aria-live": "polite" });
+    const embedBox = h("div", { class: "setup-embed" });
+    const embed = createEmbed(embedBox);
+    cleanups.push(() => embed.destroy());
+
+    const checkButton = h("button", { class: "button", type: "button", onclick: check }, "Anmeldung prüfen");
+
+    async function openLogin() {
+      try {
+        await api("setup.open_player_login");
+        result.replaceChildren(
+          h("p", { class: "muted" }, "Melde dich im neuen Fenster bei Spotify an und schließe es danach. Dann hier „Anmeldung prüfen“."),
+        );
+      } catch (err) {
+        result.replaceChildren(h("p", { class: "notice error" }, errorMessage(err)));
+      }
+    }
+
+    // Spielt den Testtrack kurz an: ganze Länge = angemeldet, 30 s = nur Vorschau
+    async function check() {
+      checkButton.disabled = true;
+      result.replaceChildren(h("div", { class: "setup-row" }, h("span", { class: "spinner", "aria-hidden": "true" }), "Prüfe den Spotify-Player …"));
+      try {
+        await embed.load(TEST_TRACK.uri);
+        await embed.play();
+        const duration = await new Promise((resolve) => {
+          const timer = setTimeout(() => done(NaN), CHECK_TIMEOUT_MS);
+          const off = embed.subscribe(() => Number.isFinite(embed.state.duration) && !embed.state.paused && done(embed.state.duration));
+          function done(value) {
+            clearTimeout(timer);
+            off();
+            resolve(value);
+          }
+        });
+        embed.pause();
+        if (!Number.isFinite(duration)) {
+          result.replaceChildren(h("p", { class: "notice error" }, "Der Spotify-Player hat nicht reagiert. Bitte erneut prüfen."));
+          return;
+        }
+        const full = !isPreview(duration, TEST_TRACK.durationMs);
+        await api("setup.report_player_login", full);
+        if (full) await refresh();
+        else result.replaceChildren(h("p", { class: "notice error" }, "Der Player spielt nur eine 30-Sekunden-Vorschau. Bitte (erneut) anmelden."));
+      } catch (err) {
+        result.replaceChildren(h("p", { class: "notice error" }, errorMessage(err)));
+      } finally {
+        checkButton.disabled = false;
+      }
+    }
+
+    cleanups.push(
+      on("setup.player_login_closed", () =>
+        result.replaceChildren(h("p", {}, "Anmeldefenster geschlossen. Jetzt „Anmeldung prüfen“, ob ganze Tracks laufen.")),
+      ),
+    );
+
+    return h(
+      "div",
+      {},
+      h(
+        "p",
+        {},
+        "Im Review hörst du Vorschläge im eingebetteten Spotify-Player an. Ohne Anmeldung dort spielt er nur " +
+          "30-Sekunden-Vorschauen. Die Anmeldung öffnet sich in einem eigenen Fenster von djsync und bleibt gespeichert.",
+      ),
+      status.player_login
+        ? h("p", { class: "notice ok" }, "Der Player spielt ganze Tracks.")
+        : null,
+      h(
+        "div",
+        { class: "setup-row" },
+        h("button", { class: "button" + (status.player_login ? "" : " primary"), type: "button", onclick: openLogin },
+          status.player_login ? "Erneut anmelden" : "Im Spotify-Player anmelden"),
+        checkButton,
+      ),
+      result,
+      embedBox,
+    );
+  },
+};
+
 // Reihenfolge der Schritte; weitere Schritte hier ergänzen
-export const STEPS = [dashboardStep, clientIdStep, loginStep];
+export const STEPS = [dashboardStep, clientIdStep, loginStep, playerLoginStep];
 
 export default {
   title: "Einrichtung",

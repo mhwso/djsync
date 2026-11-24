@@ -3,7 +3,7 @@
 // Jedes Kürzel ist ein Eintrag { keys, label, run(ctx, event) }; die Übersicht (Taste ?) wird
 // aus derselben Liste erzeugt. Optional: `shift: true|false` verlangt (bzw. verbietet) die
 // Umschalttaste, `ctrl: true` verlangt Strg (bzw. Cmd) – sonst greifen Kürzel mit Strg/Alt
-// nicht. Weitere Kürzel (z. B. Anhören #17) mit addShortcuts([...]) ergänzen – möglichst ohne bestehende Tasten zu überschreiben.
+// nicht. Weitere Kürzel mit addShortcuts([...]) ergänzen – möglichst ohne bestehende Tasten zu überschreiben.
 
 import { h } from "../../dom.js";
 
@@ -21,7 +21,10 @@ const shortcuts = [
   { keys: ["s"], match: ["s"], label: "Überspringen (nächster offener Track)", run: (c) => c.skip() },
   { keys: ["r"], match: ["r"], label: "Entschiedenen Track auf „offen“ zurücksetzen", run: (c) => c.reset() },
   { keys: ["f"], match: ["f"], label: "Filter wechseln (offen, entschieden, exakt)", run: (c) => c.nextFilter() },
-  { keys: ["Leertaste"], match: [" "], label: "Lokale Datei abspielen / pausieren", run: (c) => c.togglePlay() },
+  { keys: ["Leertaste"], match: [" "], label: "Abspielen / pausieren", run: (c) => c.togglePlay() },
+  { keys: ["a"], match: ["a"], label: "A/B: lokale Datei ↔ Vorschlag an derselben Position", run: (c) => c.toggleAB() },
+  { keys: ["v"], match: ["v"], label: "Nächsten Vorschlag zum Vergleich wählen", run: (c) => c.cycleCandidate(1) },
+  { keys: ["Umschalt+V"], match: ["V"], shift: true, label: "Vorherigen Vorschlag zum Vergleich wählen", run: (c) => c.cycleCandidate(-1) },
   { keys: ["→", "←"], match: ["ArrowRight", "ArrowLeft"], label: "Um die Sprungweite vor- / zurückspringen", run: (c, e) => c.skipPlay(e.key === "ArrowRight" ? 1 : -1) },
   { keys: ["Esc"], match: ["Escape"], label: "Mehrfachauswahl aufheben", run: (c) => c.clearSelection() },
   { keys: ["?"], match: ["?"], label: "Diese Übersicht", run: (c) => c.toggleHelp() },
