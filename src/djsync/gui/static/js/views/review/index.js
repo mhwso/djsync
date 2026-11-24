@@ -5,14 +5,19 @@
 // Jede Entscheidung wird sofort gespeichert (API review.*); danach springt die Auswahl zum
 // nächsten offenen Track. Review-Entscheidungen verändern die Playlist nicht.
 //
+// Mehrfachauswahl (Strg-/Umschalt-Klick, Umschalt+↑/↓, Strg+A): Bei mehr als einem
+// ausgewählten Track zeigt die rechte Spalte statt der Detailansicht die Massenoperationen
+// (bulk.js) – „nicht auf Spotify“ und „erneut suchen“ für alle ausgewählten Tracks.
+//
 // Erweiterungspunkte:
 //   - leave(): Rückkehr nach dem Review (#16 leitet hier zum Änderungsplan zurück)
 //   - onSelect: wird bei jedem Wechsel des ausgewählten Tracks gerufen (#17 stoppt die Wiedergabe)
-//   - list.js / keys.js / detail.js: Mehrfachauswahl (#15), Kürzel, Player-Knöpfe (#17)
+//   - keys.js / detail.js: Kürzel, Player-Knöpfe (#17)
 
-import { api, errorMessage } from "../../api.js";
+import { api, errorMessage, on } from "../../api.js";
 import { h } from "../../dom.js";
 import { plural } from "../../format.js";
+import { bulkSummary, renderBulk } from "./bulk.js";
 import { renderDetail, renderDone } from "./detail.js";
 import { handleKey, helpDialog } from "./keys.js";
 import { FILTERS } from "./labels.js";
@@ -29,10 +34,14 @@ export default {
     const state = {
       filter: FILTERS.some((f) => f.id === params.filter) ? params.filter : "open",
       listing: null, // Antwort von review.tracks
-      selected: null, // Fingerprint
+      selected: null, // Fingerprint des Tracks, auf dem die Tastatur steht (Detailansicht)
+      marked: new Set(), // Fingerprints aller ausgewählten Tracks (Mehrfachauswahl)
+      anchor: null, // Ausgangspunkt für Umschalt-Auswahl
       detail: null, // Antwort von review.track
       link: { open: false, value: "", error: null },
       message: null, // Fehlermeldung über der Detailansicht
+      notice: null, // Ergebnis einer Massenoperation
+      progress: null, // { done, total } während „erneut suchen“
       busy: false,
     };
 
@@ -63,13 +72,18 @@ export default {
       const n = state.listing?.open_count ?? 0;
       count.replaceChildren(h("span", { class: `badge ${n ? "open" : "ok"}` }, n ? plural(n, "offener Track", "offene Tracks") : "Nichts offen"));
       filters.replaceChildren(renderFilters(state.filter, setFilter));
-      list.replaceChildren(renderList(state.listing?.tracks ?? [], state.selected, select));
-      list.querySelector(".review-item.selected")?.scrollIntoView({ block: "nearest" });
+      list.replaceChildren(renderList(state.listing?.tracks ?? [], state.marked, state.selected, clickTrack));
+      list.querySelector(".review-item.cursor")?.scrollIntoView({ block: "nearest" });
     }
 
     function renderMain() {
-      message.replaceChildren(state.message ? h("p", { class: "notice error" }, state.message) : "");
-      if (state.detail) {
+      message.replaceChildren(
+        state.message ? h("p", { class: "notice error" }, state.message) : "",
+        state.notice ? h("p", { class: "notice" }, state.notice) : "",
+      );
+      if (state.marked.size > 1 || state.progress) {
+        detail.replaceChildren(renderBulk(markedTracks(), bulkActions, state.progress));
+      } else if (state.detail) {
         detail.replaceChildren(renderDetail(state.detail, actions, state.link));
       } else if (state.filter === "open" && (state.listing?.open_count ?? 0) === 0) {
         detail.replaceChildren(renderDone(leave));
@@ -91,8 +105,11 @@ export default {
 
     async function select(fingerprint) {
       state.selected = fingerprint;
+      state.marked = new Set(fingerprint ? [fingerprint] : []);
+      state.anchor = fingerprint;
       state.link = { open: false, value: "", error: null };
       state.message = null;
+      state.notice = null;
       state.detail = null;
       for (const fn of onSelect) fn(fingerprint);
       renderSide();
@@ -133,6 +150,122 @@ export default {
         state.busy = false;
       }
     }
+
+    // ---- Mehrfachauswahl --------------------------------------------------
+
+    function markedTracks() {
+      return (state.listing?.tracks ?? []).filter((t) => state.marked.has(t.fingerprint));
+    }
+
+    // Auswahl setzen; bei genau einem Track die normale Detailansicht
+    function mark(fingerprints, cursor) {
+      if (fingerprints.size <= 1) return select(cursor ?? [...fingerprints][0] ?? null);
+      state.marked = fingerprints;
+      state.selected = cursor;
+      state.detail = null;
+      state.link = { open: false, value: "", error: null };
+      state.message = null;
+      for (const fn of onSelect) fn(null);
+      renderSide();
+      renderMain();
+    }
+
+    // Fingerprints der Liste von a bis b (beide eingeschlossen, Reihenfolge egal)
+    function range(a, b) {
+      const fps = (state.listing?.tracks ?? []).map((t) => t.fingerprint);
+      let i = fps.indexOf(a);
+      const j = fps.indexOf(b);
+      if (i < 0) i = j;
+      return new Set(fps.slice(Math.min(i, j), Math.max(i, j) + 1));
+    }
+
+    function clickTrack(fingerprint, event) {
+      if (event.ctrlKey || event.metaKey) {
+        const marked = new Set(state.marked);
+        if (marked.has(fingerprint)) marked.delete(fingerprint);
+        else marked.add(fingerprint);
+        state.anchor = fingerprint;
+        const cursor = marked.has(fingerprint) ? fingerprint : [...marked][0];
+        return marked.size ? mark(marked, cursor) : undefined;
+      }
+      if (event.shiftKey && state.anchor) {
+        const anchor = state.anchor;
+        mark(range(anchor, fingerprint), fingerprint);
+        state.anchor = anchor;
+        return;
+      }
+      return select(fingerprint);
+    }
+
+    function extend(step) {
+      const tracks = state.listing?.tracks ?? [];
+      if (tracks.length === 0) return;
+      const i = tracks.findIndex((t) => t.fingerprint === state.selected);
+      const j = Math.max(0, Math.min(tracks.length - 1, (i < 0 ? 0 : i) + step));
+      const anchor = state.anchor ?? tracks[j].fingerprint;
+      mark(range(anchor, tracks[j].fingerprint), tracks[j].fingerprint);
+      state.anchor = anchor;
+    }
+
+    function selectAll() {
+      const tracks = state.listing?.tracks ?? [];
+      if (tracks.length === 0) return;
+      const anchor = state.anchor;
+      mark(new Set(tracks.map((t) => t.fingerprint)), state.selected ?? tracks[0].fingerprint);
+      state.anchor = anchor;
+    }
+
+    // Nach einer Massenoperation: Liste neu laden, Auswahl auf die noch sichtbaren Tracks
+    // beschränken, Ergebnis anzeigen.
+    async function afterBulk(result) {
+      await loadList();
+      const visible = new Set(state.listing.tracks.map((t) => t.fingerprint));
+      const marked = new Set([...state.marked].filter((fp) => visible.has(fp)));
+      if (marked.size > 1) {
+        await mark(marked, visible.has(state.selected) ? state.selected : [...marked][0]);
+      } else if (marked.size === 1) {
+        await select([...marked][0]);
+      } else {
+        const next = await api("review.next_open", folder, null);
+        await select(next && visible.has(next) ? next : (state.listing.tracks[0]?.fingerprint ?? null));
+      }
+      state.notice = bulkSummary(result);
+      renderMain();
+    }
+
+    async function bulk(method) {
+      if (state.marked.size === 0 || state.busy) return;
+      state.busy = true;
+      state.message = null;
+      state.notice = null;
+      try {
+        if (method === "bulk_search") {
+          state.progress = { done: 0, total: 0 };
+          renderMain();
+        }
+        const result = await api(`review.${method}`, folder, [...state.marked]);
+        state.progress = null;
+        await afterBulk(result);
+      } catch (err) {
+        state.progress = null;
+        fail(err);
+      } finally {
+        state.busy = false;
+      }
+    }
+
+    const bulkActions = {
+      notOnSpotify: () => bulk("bulk_not_on_spotify"),
+      searchAgain: () => bulk("bulk_search"),
+      cancelSearch: () => api("review.cancel_search").catch(fail),
+      clearSelection: () => (state.marked.size > 1 && !state.busy ? select(state.selected) : undefined),
+    };
+
+    const offProgress = on("review.search_progress", (data) => {
+      if (!state.progress) return;
+      state.progress = data;
+      renderMain();
+    });
 
     async function setFilter(filter) {
       state.filter = filter;
@@ -180,7 +313,8 @@ export default {
         state.link = { open: false, value: "", error: null };
         renderMain();
       },
-      notOnSpotify: () => decide("not_on_spotify"),
+      notOnSpotify: () => (state.marked.size > 1 ? bulkActions.notOnSpotify() : decide("not_on_spotify")),
+      searchAgain: () => bulkActions.searchAgain(),
       async skip() {
         try {
           const next = await api("review.next_open", folder, state.selected);
@@ -217,6 +351,9 @@ export default {
         const i = FILTERS.findIndex((f) => f.id === state.filter);
         setFilter(FILTERS[(i + 1) % FILTERS.length].id);
       },
+      extend,
+      selectAll,
+      clearSelection: bulkActions.clearSelection,
       toggleHelp,
       leave,
     };
@@ -241,6 +378,7 @@ export default {
 
     return () => {
       document.removeEventListener("keydown", onKey);
+      offProgress();
       for (const fn of onSelect) fn(null);
     };
   },

@@ -220,3 +220,97 @@ def test_unknown_filter_is_reported(api, folder):
 def test_unknown_folder_is_reported(api, folder, music):
     with pytest.raises(ApiError, match="Ordner"):
         api.review.tracks(str(music.root / "Anders"))
+
+
+# ---- Massenoperationen ----------------------------------------------------
+
+
+def all_fingerprints(api, folder):
+    """Fingerprints aller Tracks des Ordners (offen, entschieden, exakt) je Dateiname."""
+    return {
+        t["filename"]: t["fingerprint"]
+        for filter in ("open", "decided", "exact")
+        for t in api.review.tracks(folder, filter)["tracks"]
+    }
+
+
+def statuses(api, folder):
+    return {
+        t["filename"]: t["status"]
+        for filter in ("open", "decided", "exact")
+        for t in api.review.tracks(folder, filter)["tracks"]
+    }
+
+
+def test_bulk_not_on_spotify_marks_all_selected_tracks(api, folder):
+    fps = all_fingerprints(api, folder)
+    selection = [fps["Alpha - Two (Extended Mix).mp3"], fps["Nobody - Missing.mp3"], fps["Alpha - One.mp3"]]
+
+    result = api.review.bulk_not_on_spotify(folder, selection)
+
+    assert (result["done"], result["skipped"], result["open_count"]) == (3, 0, 0)
+    assert statuses(api, folder) == {
+        "Alpha - One.mp3": "not_on_spotify",
+        "Alpha - Two (Extended Mix).mp3": "not_on_spotify",
+        "Nobody - Missing.mp3": "not_on_spotify",
+    }
+
+
+def test_bulk_not_on_spotify_skips_already_marked_and_unknown_tracks(api, folder):
+    fps = all_fingerprints(api, folder)
+    missing = fps["Nobody - Missing.mp3"]
+    api.review.not_on_spotify(folder, missing)
+
+    result = api.review.bulk_not_on_spotify(folder, [missing, fps["Alpha - One.mp3"], "gibt-es-nicht"])
+
+    assert (result["done"], result["skipped"]) == (1, 2)
+
+
+def test_bulk_search_only_searches_open_tracks_of_a_mixed_selection(api, folder, spotify):
+    fps = all_fingerprints(api, folder)
+    api.review.not_on_spotify(folder, fps["Alpha - Two (Extended Mix).mp3"])  # entschieden
+    spotify.catalog.append(track("id_missing", "Nobody", "Missing"))  # inzwischen auf Spotify
+    spotify.requests.clear()
+
+    result = api.review.bulk_search(folder, list(fps.values()))
+
+    assert (result["done"], result["skipped"], result["cancelled"]) == (1, 2, False)
+    assert result["open_count"] == 0
+    assert statuses(api, folder) == {
+        "Alpha - One.mp3": "exact",
+        "Alpha - Two (Extended Mix).mp3": "not_on_spotify",
+        "Nobody - Missing.mp3": "exact",
+    }
+    queries = [r.url.params["q"] for r in spotify.searches()]
+    assert queries and all("Missing" in q for q in queries)
+
+
+def test_bulk_search_forces_new_search_of_approximate_tracks(api, folder, spotify, events):
+    fps = all_fingerprints(api, folder)
+    two = fps["Alpha - Two (Extended Mix).mp3"]
+    # Das Cover ist von Spotify verschwunden, ein neuer Track ist hinzugekommen
+    spotify.catalog[:] = [t for t in spotify.catalog if t["id"] != "id_two_cover"]
+    spotify.catalog.append(track("id_two_live", "Alpha", "Two"))
+
+    result = api.review.bulk_search(folder, [two, fps["Nobody - Missing.mp3"]])
+
+    assert (result["done"], result["skipped"]) == (2, 0)
+    detail = api.review.track(folder, two)
+    assert detail["status"] == "approximate"
+    assert {c["id"] for c in detail["candidates"]} == {"id_two", "id_two_live"}
+    assert events.named("review.search_progress") == [
+        {"done": 0, "total": 2},
+        {"done": 1, "total": 2},
+        {"done": 2, "total": 2},
+    ]
+
+
+def test_bulk_search_can_be_cancelled(api, folder, spotify):
+    fps = all_fingerprints(api, folder)
+    spotify.on_request = lambda request: api.review.cancel_search()
+
+    result = api.review.bulk_search(folder, [fps["Alpha - Two (Extended Mix).mp3"], fps["Nobody - Missing.mp3"]])
+
+    assert result["cancelled"] is True
+    assert result["done"] < 2
+    assert statuses(api, folder)["Nobody - Missing.mp3"] == "not_found"

@@ -6,8 +6,10 @@ Jede Entscheidung wird sofort in der Datenbank gespeichert.
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
+from .config import Config
 from .db import Database
 from .models import (
     APPROXIMATE,
@@ -22,6 +24,7 @@ from .models import (
     MatchRecord,
 )
 from .spotify import SpotifyClient, SpotifyError
+from .sync import match_files
 
 _LINK_RE = re.compile(r"(?:open\.spotify\.com/(?:intl-[a-z]+/)?track/|spotify:track:)([A-Za-z0-9]{22})")
 _ID_RE = re.compile(r"^[A-Za-z0-9]{22}$")
@@ -151,6 +154,86 @@ def review_tracks(db: Database, folder: str, filter: str = OPEN) -> list[ReviewT
 def find_track(db: Database, folder: str, fingerprint: str) -> ReviewTrack | None:
     """Der Track mit diesem Fingerprint im Ordner, gleich welcher Treffer-Status – sonst None."""
     return next((t for t in _folder_tracks(db, folder) if t.fingerprint == fingerprint), None)
+
+
+@dataclass(frozen=True)
+class BulkResult:
+    """Ergebnis einer Massenoperation: bearbeitete und übersprungene Tracks."""
+
+    done: int
+    skipped: int
+    cancelled: bool = False
+
+
+def _selection(db: Database, folder: str, fingerprints: list[str]) -> tuple[list[ReviewTrack], int]:
+    """Die ausgewählten Tracks des Ordners (ohne Doppelte) und die Anzahl unbekannter Fingerprints."""
+    wanted = set(fingerprints)
+    tracks = [t for t in _folder_tracks(db, folder) if t.fingerprint in wanted]
+    return tracks, len(wanted) - len(tracks)
+
+
+def mark_all_not_on_spotify(db: Database, folder: str, fingerprints: list[str]) -> BulkResult:
+    """Markiert alle ausgewählten Tracks als „nicht auf Spotify“ und speichert sofort.
+
+    Übersprungen werden Tracks, die schon so markiert sind oder nicht (mehr) im Ordner liegen.
+    """
+    tracks, unknown = _selection(db, folder, fingerprints)
+    todo = [t for t in tracks if t.record.status != NOT_ON_SPOTIFY]
+    for t in todo:
+        db.save_match(t.fingerprint, NOT_ON_SPOTIFY, None)
+    db.commit()
+    return BulkResult(done=len(todo), skipped=unknown + len(tracks) - len(todo))
+
+
+class _Cancelled(Exception):
+    pass
+
+
+def search_again(
+    db: Database,
+    client: SpotifyClient,
+    cfg: Config,
+    folder: str,
+    fingerprints: list[str],
+    *,
+    on_progress: Callable[[int, int], None] | None = None,
+    cancel: Callable[[], bool] | None = None,
+) -> BulkResult:
+    """Sucht die ausgewählten offenen Tracks erneut auf Spotify – wie `sync --retry`.
+
+    Entschiedene und exakte Tracks werden übersprungen. Jeder gesuchte Track wird sofort
+    gespeichert (Vorschläge und Treffer-Status). on_progress(erledigt, gesamt) kommt vorab mit
+    (0, gesamt) und nach jedem Track; cancel() wird vor jeder Spotify-Anfrage geprüft – ein
+    Abbruch behält die bis dahin gesuchten Tracks und liefert cancelled=True.
+    """
+    tracks, unknown = _selection(db, folder, fingerprints)
+    todo = [t for t in tracks if t.record.status in REVIEW_STATUSES]
+    skipped = unknown + len(tracks) - len(todo)
+    done = 0
+
+    def progress(n: int, total: int) -> None:
+        nonlocal done
+        done = n
+        if on_progress:
+            on_progress(n, total)
+
+    def before_request() -> None:
+        if cancel and cancel():
+            raise _Cancelled
+
+    try:
+        match_files(
+            [(t.file, t.fingerprint) for t in todo],
+            db,
+            client,
+            cfg,
+            retry=True,
+            on_progress=progress,
+            before_request=before_request,
+        )
+    except _Cancelled:
+        return BulkResult(done=done, skipped=skipped, cancelled=True)
+    return BulkResult(done=len(todo), skipped=skipped)
 
 
 def next_open_track(db: Database, folder: str, after: str | None = None) -> ReviewTrack | None:

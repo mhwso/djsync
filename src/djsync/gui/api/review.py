@@ -8,11 +8,13 @@ bestätigten Sync dort.
 from __future__ import annotations
 
 import os
+import threading
 
 from ... import review_core
 from ...db import Database
 from ...matching import score_candidate
 from ...models import DECIDED_STATUSES, REVIEW_STATUSES
+from ...spotify import SpotifyError
 from .base import ApiArea, ApiError
 
 TRACK_URL = "https://open.spotify.com/track/{}"
@@ -62,6 +64,10 @@ def _detail(t: review_core.ReviewTrack, duration_tolerance_ms: int) -> dict:
 
 
 class ReviewApi(ApiArea):
+    def __init__(self, ctx):
+        super().__init__(ctx)
+        self._cancel_search = threading.Event()
+
     def tracks(self, folder: str, filter: str = review_core.OPEN) -> dict:
         """Tracks des Ordners für die Liste, nach Dateipfad sortiert.
 
@@ -131,7 +137,61 @@ class ReviewApi(ApiArea):
         """Setzt einen entschiedenen Track auf „offen“ zurück, ohne neu zu suchen."""
         return self._decide(folder, fingerprint, lambda db: review_core.reset_to_open(db, fingerprint))
 
+    # ---- Massenoperationen ------------------------------------------------
+    # Wirken auf alle ausgewählten Tracks (Fingerprints) und liefern:
+    #   done        – Anzahl bearbeiteter Tracks
+    #   skipped     – Anzahl übersprungener Tracks
+    #   open_count  – Anzahl offener Tracks im Ordner
+
+    def bulk_not_on_spotify(self, folder: str, fingerprints: list[str]) -> dict:
+        """Markiert alle ausgewählten Tracks als „nicht auf Spotify“ (schon markierte zählen als übersprungen)."""
+        with self._ctx.db() as db:
+            self._check_folder(db, folder)
+            result = review_core.mark_all_not_on_spotify(db, folder, fingerprints)
+            return self._bulk_state(db, folder, result)
+
+    def bulk_search(self, folder: str, fingerprints: list[str]) -> dict:
+        """Sucht alle ausgewählten offenen Tracks erneut auf Spotify (erzwungen wie `sync --retry`).
+
+        Entschiedene und exakte Tracks werden übersprungen. Fortschritt kommt als Event
+        „review.search_progress“ mit {done, total}; `cancel_search` bricht ab (cancelled: true),
+        bis dahin gesuchte Tracks bleiben gespeichert.
+        """
+        cfg = self._ctx.load_config()
+        client = self._ctx.spotify(cfg)
+        self._cancel_search.clear()
+        with self._ctx.db() as db:
+            self._check_folder(db, folder)
+            try:
+                result = review_core.search_again(
+                    db,
+                    client,
+                    cfg,
+                    folder,
+                    fingerprints,
+                    on_progress=lambda done, total: self._ctx.events.emit(
+                        "review.search_progress", {"done": done, "total": total}
+                    ),
+                    cancel=self._cancel_search.is_set,
+                )
+            except SpotifyError as e:
+                raise ApiError(f"Spotify-Suche fehlgeschlagen: {e}") from e
+            return self._bulk_state(db, folder, result)
+
+    def cancel_search(self) -> None:
+        """Bricht ein laufendes `bulk_search` vor der nächsten Spotify-Anfrage ab."""
+        self._cancel_search.set()
+
     # ---- intern -----------------------------------------------------------
+
+    @staticmethod
+    def _bulk_state(db: Database, folder: str, result: review_core.BulkResult) -> dict:
+        return {
+            "done": result.done,
+            "skipped": result.skipped,
+            "cancelled": result.cancelled,
+            "open_count": db.open_count(folder),
+        }
 
     def _decide(self, folder: str, fingerprint: str, action) -> dict:
         cfg = self._ctx.load_config()
