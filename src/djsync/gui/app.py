@@ -16,7 +16,8 @@ def main() -> int:
     import webview  # erst hier: Tests und CLI brauchen pywebview nicht
 
     events = WebviewEvents()
-    api = Api(AppContext.default(events=events))
+    ctx = AppContext.default(events=events)
+    api = Api(ctx)
     window = webview.create_window(
         "djsync",
         url=str(STATIC_DIR / "index.html"),
@@ -27,6 +28,7 @@ def main() -> int:
     )
     events.window = window
     window.events.loaded += lambda: install_drop(window, events)
+    window.events.closed += ctx.media.close  # lokalen Medien-Server zum Anhören beenden
     # Eingebauter HTTP-Server statt file://, damit die ES-Module der Oberfläche laden
     webview.start(http_server=True)
     return 0
