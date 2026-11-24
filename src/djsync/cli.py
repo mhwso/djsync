@@ -3,7 +3,9 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from contextlib import ExitStack
 
+from . import sync_phases as phases
 from . import ui
 from .auth import Auth, AuthError
 from .config import DB_FILE, IS_WINDOWS, SCOPES, TOKEN_FILE, ConfigError, load_config
@@ -12,16 +14,8 @@ from .filenames import normalize_folder
 from .models import APPROXIMATE, NOT_FOUND, NOT_ON_SPOTIFY, LocalFile
 from .plan import Plan
 from .review import pending_reviews, run_review
-from .scanner import scan_folder
 from .spotify import SpotifyClient, SpotifyError
-from .sync import (
-    build_plan,
-    description_text,
-    match_files,
-    playlist_files,
-    playlist_name,
-    summarize,
-)
+from .sync import summarize
 from .wizard import cmd_setup, run_interactive
 
 
@@ -83,6 +77,41 @@ def cmd_login(args) -> None:
     ui.success(f"Angemeldet als [bold]{me.get('display_name') or me.get('id')}[/].")
 
 
+class _TerminalProgress:
+    """Zeigt den Fortschritt der Sync-Phasen als Spinner bzw. Ladebalken im Terminal."""
+
+    BARS = {"scan": "Lese Dateien", "search": "Suche auf Spotify"}
+    SPINNERS = {"list": "Suche Audiodateien …", "playlist": "Lade Playlist von Spotify …"}
+
+    def __init__(self) -> None:
+        self._stack: ExitStack | None = None
+        self._step: str | None = None
+        self._advance = None
+
+    def __call__(self, step: str, done: int, total: int) -> None:
+        if step != self._step:
+            self.close()
+            self._step = step
+            self._stack = ExitStack()
+            if step in self.BARS:
+                self._advance = self._stack.enter_context(ui.progress(self.BARS[step], total))
+            else:
+                self._stack.enter_context(ui.spinner(self.SPINNERS[step]))
+        if done and self._advance:
+            self._advance()
+
+    def close(self) -> None:
+        if self._stack:
+            self._stack.close()
+        self._stack, self._step, self._advance = None, None, None
+
+    def __enter__(self) -> _TerminalProgress:
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+
 def cmd_sync(args) -> None:
     folder = resolve_folder(args.folder)
     if not os.path.isdir(folder):
@@ -90,69 +119,53 @@ def cmd_sync(args) -> None:
     cfg, db, client = setup()
 
     ui.info(f"[muted]Ordner[/]  {folder}")
-    files = scan_folder(folder, db, cfg.extensions)
+    with _TerminalProgress() as progress:
+        progress("list", 0, 0)  # Spinner, bis die Dateien aufgelistet sind
+        run = phases.read_folder(folder, db, cfg, on_progress=progress)
+    ui.success(f"{run.found} Audiodateien gefunden [muted]({run.fresh} neu eingelesen)[/]")
 
-    row = db.get_playlist(folder)
-    playlist_id = row["playlist_id"] if row else None
-    with ui.spinner("Lade Playlist von Spotify …"):
-        playlist = client.get_playlist(playlist_id) if playlist_id else None
-        if playlist_id and playlist is None:
-            playlist_id = None
-        current = client.playlist_track_ids(playlist_id) if playlist_id else []
-    if row and playlist_id is None:
+    try:
+        with _TerminalProgress() as progress:
+            progress("playlist", 0, 0)
+            phases.load_playlist(run, db, client, on_progress=progress)
+    except phases.EmptyFolderError as e:
+        raise Abort(str(e)) from None
+    if run.playlist_lost:
         ui.warn("Die verknüpfte Playlist existiert nicht mehr und wird neu angelegt.")
 
-    if not files and playlist_id and db.managed_tracks(playlist_id) & set(current):
-        raise Abort(
-            "Der Ordner enthält keine Audiodateien, die Playlist aber schon.\n"
-            "Abbruch, um die Playlist nicht versehentlich zu leeren."
-        )
+    with _TerminalProgress() as progress:
+        searched = phases.search_tracks(run, db, client, cfg, retry=args.retry, on_progress=progress)
+    if searched:
+        ui.success(f"{searched} Tracks auf Spotify gesucht")
 
-    match_files(files, db, client, cfg, retry=args.retry)
-
-    pending = pending_reviews(files, db)
+    pending = phases.summarize_run(run, db).pending
     interactive = sys.stdin.isatty() and not (args.yes or args.dry_run or args.no_review)
     if pending and interactive:
         ui.info("")
         if confirm(f"{len(pending)} Tracks sind ungefähr oder nicht gefunden. Jetzt prüfen?"):
             run_review(pending, db, client, duration_tolerance_ms=cfg.duration_tolerance_ms)
 
-    groups = summarize(files, db)
+    groups = phases.summarize_run(run, db).groups
     print_summary(groups)
     if not interactive or not pending:
         print_files(NOT_FOUND, groups[NOT_FOUND])
         print_files(APPROXIMATE, groups[APPROXIMATE])
 
-    plan = build_plan(files, db, current, playlist_id)
-    labels = {sid: os.path.basename(f.path) for f, sid in playlist_files(files, db)}
-    new_name = playlist_name(args.name or os.path.basename(folder)) if playlist_id is None else None
-    print_plan(plan, labels, new_name)
+    change = phases.plan_changes(run, db, name=args.name)
+    print_plan(change.plan, change.labels, change.new_name)
 
     if args.dry_run:
         ui.info("\n[muted]Probelauf – auf Spotify wurde nichts geändert.[/]")
         return
 
-    needs_write = plan.has_changes or playlist_id is None
-    if needs_write and not args.yes:
+    if change.needs_write and not args.yes:
         ui.info("")
         if not confirm("Änderungen auf Spotify übernehmen?"):
             ui.info("[muted]Abgebrochen – nichts geändert.[/]")
             return
 
     with ui.spinner("Übertrage Änderungen zu Spotify …"):
-        if playlist_id is None:
-            playlist_id = client.create_playlist(new_name, description_text(), public=False)
-            db.save_playlist(folder, playlist_id, new_name)
-            db.commit()
-        else:
-            wanted = playlist_name(args.name) if args.name else None
-            rename = wanted if wanted and wanted != (playlist or {}).get("name") else None
-            client.update_playlist(playlist_id, name=rename, description=description_text())
-
-        if plan.has_changes:
-            client.replace_playlist_items(playlist_id, plan.final)
-        db.set_managed_tracks(playlist_id, plan.desired)
-        db.commit()
+        playlist_id = phases.apply_changes(run, change, db, client)
     ui.playlist_link(playlist_id)
 
 
