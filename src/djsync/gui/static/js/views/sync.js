@@ -145,7 +145,14 @@ export default {
       keys = { Escape: home };
       show(
         h("p", { class: "notice error", role: "alert" }, message),
-        h("div", { class: "sync-actions" }, button("Zum Startbildschirm", home), retry && button("Erneut versuchen", retry, "primary")),
+        h(
+          "div",
+          { class: "sync-actions" },
+          button("Zum Startbildschirm", home),
+          // Anmeldung abgelaufen o. Ä.: die Meldung verweist auf die Einrichtung
+          message.includes("Einrichtung") && button("Zur Einrichtung", () => navigate("setup")),
+          retry && button("Erneut versuchen", retry, "primary"),
+        ),
       );
     }
 
