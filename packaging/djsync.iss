@@ -45,6 +45,8 @@ OutputBaseFilename=djsync-setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; Programm-Icon (Quelle: packaging\icon\*.svg); der Deinstaller nutzt das der djsync.exe
+SetupIconFile=djsync.ico
 ; Läuft djsync noch, bietet der Installer an, es zu schließen
 CloseApplications=yes
 

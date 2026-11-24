@@ -7,6 +7,8 @@
 # Ordner statt Einzeldatei: startet schneller (kein Entpacken bei jedem Start), und der
 # Installer verteilt ohnehin mehrere Dateien.
 
+import os
+
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 # Die Oberfläche (djsync/gui/static) liegt als Paketdaten neben dem Code.
@@ -30,6 +32,7 @@ exe = EXE(
     name="djsync",
     console=False,  # Fenster-App, kein Konsolenfenster
     upx=False,  # UPX-gepackte Dateien lösen häufiger Virenscanner-Fehlalarme aus
+    icon=os.path.join(SPECPATH, "djsync.ico"),  # Quelle: packaging/icon/*.svg
 )
 
 coll = COLLECT(
