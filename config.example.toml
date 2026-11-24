@@ -1,0 +1,19 @@
+# Kopieren nach ~/.config/djsync/config.toml – alle Werte sind optional.
+# Die Client-ID gehört ausschließlich in die .env im Projektordner (SPOTIFY_CLIENT_ID=..., siehe .env.example).
+
+# Muss exakt so im Spotify-Dashboard als Redirect-URI eingetragen sein
+redirect_uri = "http://127.0.0.1:8888/callback"
+
+extensions = [".mp3", ".flac", ".m4a", ".wav", ".aiff", ".aif"]
+
+# Abweichung der Dauer (Sekunden), die für einen exakten Treffer noch erlaubt ist
+duration_tolerance_s = 3
+
+# Mindestbewertung (0–1) für einen „ungefähren“ Treffer
+min_score = 0.7
+
+# Nicht gefundene Tracks nach so vielen Tagen erneut suchen
+retry_missing_days = 14
+
+# Anzahl Kandidaten im Review
+review_candidates = 5
