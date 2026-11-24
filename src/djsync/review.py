@@ -46,6 +46,15 @@ def pending_reviews(files: list[tuple[LocalFile, str | None]], db: Database) -> 
     return result
 
 
+def _ask(prompt: str) -> str | None:
+    """input(), aber None statt EOFError, wenn keine Eingabe mehr kommt."""
+    try:
+        return input(prompt)
+    except EOFError:
+        print()
+        return None
+
+
 def run_review(
     pending: list[tuple[LocalFile, str]], db: Database, client: SpotifyClient, *, duration_tolerance_ms: int
 ) -> int:
@@ -70,7 +79,9 @@ def run_review(
         options = f"1-{len(record.candidates)} / " if record.candidates else ""
 
         while True:
-            choice = input(f"  Auswahl [{options}l=Link / n=nicht auf Spotify / s=überspringen / q=beenden]: ")
+            choice = _ask(f"  Auswahl [{options}l=Link / n=nicht auf Spotify / s=überspringen / q=beenden]: ")
+            if choice is None:  # Eingabe beendet (Strg+D) – wie „q“
+                return changed
             choice = choice.strip().lower()
             if choice == "q":
                 return changed
@@ -82,7 +93,10 @@ def run_review(
                 changed += 1
                 break
             if choice == "l":
-                track_id = parse_track_link(input("  Spotify-Link: "))
+                link = _ask("  Spotify-Link: ")
+                if link is None:
+                    return changed
+                track_id = parse_track_link(link)
                 if not track_id:
                     print("  Kein gültiger Track-Link.")
                     continue
