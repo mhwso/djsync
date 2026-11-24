@@ -7,7 +7,8 @@
 //
 // Erweiterungspunkte:
 //   - leave(): Rückkehr nach dem Review (#16 leitet hier zum Änderungsplan zurück)
-//   - onSelect: wird bei jedem Wechsel des ausgewählten Tracks gerufen (#17 stoppt die Wiedergabe)
+//   - onSelect: wird bei jedem Wechsel des ausgewählten Tracks gerufen
+//   - player.js: Anhören der lokalen Datei; weitere Quellen (#18 Spotify, A/B) über sourceFactories
 //   - list.js / keys.js / detail.js: Mehrfachauswahl (#15), Kürzel, Player-Knöpfe (#17)
 
 import { api, errorMessage } from "../../api.js";
@@ -17,6 +18,7 @@ import { renderDetail, renderDone } from "./detail.js";
 import { handleKey, helpDialog } from "./keys.js";
 import { FILTERS } from "./labels.js";
 import { renderFilters, renderList } from "./list.js";
+import { createPlayer } from "./player.js";
 
 // Funktionen (fingerprint | null) → void, gerufen nach jedem Wechsel des ausgewählten Tracks
 export const onSelect = [];
@@ -42,6 +44,10 @@ export default {
     const message = h("div", { class: "review-message", "aria-live": "polite" });
     const detail = h("div", { class: "review-detail" });
     const help = helpDialog();
+
+    // Anhören: Startstelle und Sprungweite aus den Einstellungen (sonst die Standardwerte)
+    const settings = await api("settings.get").catch(() => ({}));
+    const player = createPlayer({ folder, startS: settings.start_position_s ?? 60, skipS: settings.skip_s ?? 30 });
 
     root.append(
       h(
@@ -71,6 +77,8 @@ export default {
       message.replaceChildren(state.message ? h("p", { class: "notice error" }, state.message) : "");
       if (state.detail) {
         detail.replaceChildren(renderDetail(state.detail, actions, state.link));
+        // Die Bedienelemente bleiben dieselben, die Wiedergabe läuft beim Neuzeichnen weiter
+        detail.querySelector(".review-player")?.append(player.element);
       } else if (state.filter === "open" && (state.listing?.open_count ?? 0) === 0) {
         detail.replaceChildren(renderDone(leave));
       } else {
@@ -94,6 +102,7 @@ export default {
       state.link = { open: false, value: "", error: null };
       state.message = null;
       state.detail = null;
+      if (fingerprint !== player.fingerprint) player.select(fingerprint); // Trackwechsel stoppt die Wiedergabe
       for (const fn of onSelect) fn(fingerprint);
       renderSide();
       if (fingerprint) {
@@ -219,6 +228,8 @@ export default {
       },
       toggleHelp,
       leave,
+      togglePlay: () => player.toggle(),
+      skipPlay: (direction) => player.skip(direction),
     };
 
     function onKey(event) {
@@ -241,6 +252,7 @@ export default {
 
     return () => {
       document.removeEventListener("keydown", onKey);
+      player.destroy();
       for (const fn of onSelect) fn(null);
     };
   },

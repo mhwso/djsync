@@ -82,6 +82,16 @@
 
 .review-player:empty { display: none; }
 
+/* Anhören (player.js) */
+.player { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); padding: 10px 12px; margin: 0 0 8px; }
+.player-controls { display: flex; align-items: center; gap: 8px; }
+.player-play { min-width: 112px; }
+.player-bar { flex: 1; min-width: 80px; accent-color: var(--accent); }
+.player-time { color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.player-info { display: flex; gap: 12px; font-size: 12px; color: var(--muted); }
+.player-info:has(span:not(:empty)) { margin-top: 6px; }
+.player-status.error { color: var(--danger); }
+
 .review-detail-body h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 16px 0 8px; }
 
 .review-candidates { width: 100%; border-collapse: collapse; }
