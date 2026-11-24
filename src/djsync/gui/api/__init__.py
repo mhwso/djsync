@@ -23,6 +23,7 @@ from .base import ApiArea, ApiError
 from .folders import FoldersApi
 from .relink import RelinkApi
 from .settings import SettingsApi
+from .updates import UpdatesApi
 
 __all__ = ["Api", "ApiArea", "ApiError"]
 
@@ -33,3 +34,4 @@ class Api:
         self.folders = FoldersApi(ctx)
         self.relink = RelinkApi(ctx)
         self.settings = SettingsApi(ctx)
+        self.updates = UpdatesApi(ctx)
