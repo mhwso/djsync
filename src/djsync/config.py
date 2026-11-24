@@ -26,6 +26,8 @@ SCOPES = (
     "playlist-read-collaborative",
     "playlist-modify-private",
     "playlist-modify-public",
+    # Nötig für market=from_token bei /search (sonst 403 "Insufficient client scope")
+    "user-read-private",
 )
 
 

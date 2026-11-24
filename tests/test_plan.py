@@ -53,3 +53,30 @@ def test_pure_append_at_top_is_not_reorder():
 def test_duplicates_in_playlist_are_cleaned():
     p = compute_plan(["A"], ["A", "A"], {"A"})
     assert p.final == ["A"] and p.has_changes
+
+
+def test_retry_researches_only_automatic_results():
+    from djsync.config import Config
+    from djsync.db import now_iso
+    from djsync.models import APPROXIMATE, EXACT, MANUAL, NOT_FOUND, NOT_ON_SPOTIFY, MatchRecord
+    from djsync.sync import needs_search
+
+    cfg = Config(client_id="x")
+
+    def rec(status):
+        return MatchRecord(fingerprint="tag:a|b|", status=status, spotify_id=None, candidates=[], searched_at=now_iso())
+
+    assert not needs_search(rec(NOT_FOUND), cfg)
+    assert not needs_search(rec(APPROXIMATE), cfg)
+    assert needs_search(rec(NOT_FOUND), cfg, retry=True)
+    assert needs_search(rec(APPROXIMATE), cfg, retry=True)
+    for status in (EXACT, MANUAL, NOT_ON_SPOTIFY):
+        assert not needs_search(rec(status), cfg, retry=True)
+
+
+def test_playlist_name_is_prefixed_once():
+    from djsync.sync import playlist_name
+
+    assert playlist_name("2026") == "DJSYNC - 2026"
+    assert playlist_name("House Promos") == "DJSYNC - House Promos"
+    assert playlist_name("DJSYNC - House") == "DJSYNC - House"

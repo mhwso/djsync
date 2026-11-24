@@ -58,6 +58,13 @@ class Auth:
         token = self._load()
         if token is None:
             raise AuthError("Nicht angemeldet. Bitte zuerst `djsync login` ausführen.")
+        granted = set((token.get("scope") or "").split())
+        missing = set(self.scope.split()) - granted
+        if missing:
+            raise AuthError(
+                "djsync benötigt zusätzliche Spotify-Berechtigungen "
+                f"({', '.join(sorted(missing))}). Bitte `djsync login` erneut ausführen."
+            )
         if token.get("expires_at", 0) - 60 < time.time():
             token = self.refresh()
         return token["access_token"]
@@ -81,6 +88,8 @@ class Auth:
             )
         new = r.json()
         new.setdefault("refresh_token", token["refresh_token"])
+        if "scope" in token:
+            new.setdefault("scope", token["scope"])
         return self._store(new)
 
     def _load(self) -> dict | None:

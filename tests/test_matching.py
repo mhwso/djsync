@@ -5,6 +5,8 @@ from djsync.matching import (
     parse_title,
     score_candidate,
     split_artists,
+    split_artists_raw,
+    split_title,
 )
 from djsync.models import APPROXIMATE, EXACT, NOT_FOUND, Candidate, LocalFile
 
@@ -151,3 +153,57 @@ def test_choose_unrelated_is_not_found():
 
 def test_choose_no_candidates():
     assert choose_best(local("A", "B"), []).status == NOT_FOUND
+
+
+def test_choose_skips_higher_scored_candidate_with_wrong_title():
+    # „In The House“ hat durch passenden Mix den höheren Score, aber der Titel passt nicht
+    f = local("Angelo Ferreri", "In The City (Original Mix)", 343_000)
+    house = cand("house", ["Angelo Ferreri", "Hatiras"], "In The House", 390_000)
+    edit = cand("edit", ["Angelo Ferreri"], "In The City - Edit", 172_000)
+    r = choose_best(f, [house, edit])
+    assert (r.status, r.spotify_id) == (APPROXIMATE, "edit")
+
+
+# ---- Rohform für Suchanfragen ---------------------------------------------
+
+
+def test_split_title_keeps_original_spelling():
+    t = split_title("What's Going On (feat. Singer) (Original Mix)")
+    assert (t.base, t.mix, t.featured) == ("What's Going On", "Original Mix", ["Singer"])
+
+
+def test_split_title_spotify_style():
+    t = split_title("Yes Ron - Onno Remix")
+    assert (t.base, t.mix) == ("Yes Ron", "Onno Remix")
+
+
+def test_split_artists_raw_keeps_ampersand_names():
+    assert split_artists_raw("&ME") == ["&ME"]
+    assert split_artists_raw("Carbon, Wahrlich") == ["Carbon", "Wahrlich"]
+    assert split_artists_raw("Leftwing & Kody feat. Jen Miras") == ["Leftwing", "Kody", "Jen Miras"]
+    assert split_artists_raw("HANNS (DE)") == ["HANNS (DE)"]
+
+
+def test_country_tag_in_artist_is_ignored():
+    f = local("SLV (DE)", "Liminal Space (Original Mix)", 312_827)
+    c = cand("1", ["SLV"], "Liminal Space", 312_827)
+    assert score_candidate(f, c).exact
+
+
+def test_country_tag_does_not_change_fingerprint():
+    assert fingerprint(local("SLV (DE)", "X")) != fingerprint(local("SLV", "X"))
+
+
+def test_specific_mix_wins_over_original_mix():
+    assert parse_title("Sexgas (Arnaud Le Texier Rmx) (Original Mix)").mix == "arnaud le texier remix"
+    assert parse_title("Sexgas - Arnaud Le Texier Remix").mix == "arnaud le texier remix"
+
+
+def test_dash_suffix_with_hyphenated_remixer():
+    p = parse_title("Right Moment - D-Unity Remix")
+    assert (p.base, p.mix) == ("right moment", "d unity remix")
+
+
+def test_colon_separated_artists():
+    assert split_artists("Leftwing : Kody") == ["leftwing", "kody"]
+    assert split_artists_raw("Leftwing : Kody") == ["Leftwing", "Kody"]
