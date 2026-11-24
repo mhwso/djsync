@@ -10,7 +10,8 @@
 // (bulk.js) – „nicht auf Spotify“ und „erneut suchen“ für alle ausgewählten Tracks.
 //
 // Erweiterungspunkte:
-//   - leave(): Rückkehr nach dem Review (#16 leitet hier zum Änderungsplan zurück)
+//   - leave(): Rückkehr nach dem Review; mit from=sync (Review aus dem Sync heraus) zurück zum
+//     Änderungsplan desselben Syncs, sonst zum Startbildschirm
 //   - onSelect: wird bei jedem Wechsel des ausgewählten Tracks gerufen
 //   - player.js: Anhören der lokalen Datei; weitere Quellen (#18 Spotify, A/B) über sourceFactories
 //   - keys.js / detail.js: Kürzel, Player-Knöpfe
@@ -33,6 +34,7 @@ export default {
 
   async render(root, params, { navigate }) {
     const folder = params.folder;
+    const fromSync = params.from === "sync";
     const state = {
       filter: FILTERS.some((f) => f.id === params.filter) ? params.filter : "open",
       listing: null, // Antwort von review.tracks
@@ -66,7 +68,11 @@ export default {
         h("span", { class: "review-folder mono muted", title: folder }, folder),
         count,
         h("button", { class: "button", title: "Tastenkürzel (?)", onclick: () => toggleHelp() }, "Tastenkürzel"),
-        h("button", { class: "button", title: "Review verlassen (q)", onclick: () => leave() }, "Fertig"),
+        h(
+          "button",
+          { class: "button", title: fromSync ? "Zurück zum Änderungsplan (q)" : "Review verlassen (q)", onclick: () => leave() },
+          fromSync ? "Weiter zum Änderungsplan" : "Fertig",
+        ),
       ),
       h("div", { class: "review" }, h("aside", { class: "review-side" }, filters, list), h("section", { class: "review-main" }, message, detail)),
       help,
@@ -94,7 +100,7 @@ export default {
         // Die Bedienelemente bleiben dieselben, die Wiedergabe läuft beim Neuzeichnen weiter
         detail.querySelector(".review-player")?.append(player.element);
       } else if (state.filter === "open" && (state.listing?.open_count ?? 0) === 0) {
-        detail.replaceChildren(renderDone(leave));
+        detail.replaceChildren(renderDone(leave, fromSync));
       } else {
         detail.replaceChildren(h("p", { class: "muted review-placeholder" }, "Wähle links einen Track."));
       }
@@ -289,7 +295,9 @@ export default {
     }
 
     function leave() {
-      navigate("folders");
+      // aus dem Sync heraus: zurück zum Änderungsplan (ohne start, der Sync steht noch bereit)
+      if (fromSync) navigate("sync", { folder, step: "plan" });
+      else navigate("folders");
     }
 
     function toggleHelp() {

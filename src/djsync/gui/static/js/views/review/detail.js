@@ -128,12 +128,19 @@ export function renderDetail(d, actions, link) {
   );
 }
 
-export function renderDone(onLeave) {
+// fromSync: Review aus dem Sync heraus – es geht zurück zum Änderungsplan dieses Syncs
+export function renderDone(onLeave, fromSync = false) {
   return h(
     "div",
     { class: "empty" },
     h("strong", {}, "Nichts mehr offen"),
-    "Alle Tracks dieses Ordners sind geprüft. Die Entscheidungen landen mit dem nächsten bestätigten Sync in der Playlist.",
-    h("p", {}, h("button", { class: "button primary", onclick: onLeave }, "Zurück zu den Ordnern")),
+    fromSync
+      ? "Alle Tracks dieses Ordners sind geprüft. Die Entscheidungen fließen in den Änderungsplan ein."
+      : "Alle Tracks dieses Ordners sind geprüft. Die Entscheidungen landen mit dem nächsten bestätigten Sync in der Playlist.",
+    h(
+      "p",
+      {},
+      h("button", { class: "button primary", onclick: onLeave }, fromSync ? "Weiter zum Änderungsplan" : "Zurück zu den Ordnern"),
+    ),
   );
 }

@@ -256,3 +256,67 @@ def test_unreachable_or_unknown_folder_is_rejected(api, music, tmp_path):
     with pytest.raises(ApiError, match="nicht erreichbar"):
         api.sync.start(folder)
     assert api.sync.status() is None
+
+
+# --- Review aus dem Sync heraus (#16) ---
+
+MISSING_ID = "4uLU6hMCjMI75M1A2tKUQC"  # gültige Track-ID, die die Suche nicht findet
+
+
+def test_no_review_hint_without_open_tracks(api, music, spotify):
+    spotify.catalog += [track("id_one", "Alpha", "One")]
+    folder = music.folder("Mix", "Alpha - One.mp3")
+    api.folders.add(folder, "Mix")
+    api.sync.start(folder)
+    wait_for(api, "ready")
+
+    assert api.sync.summary()["open"] == []
+
+
+def test_review_first_returns_to_plan_of_same_sync_with_decisions(api, music, spotify, events):
+    folder = _mix_folder(music, spotify)
+    spotify.catalog.append(track(MISSING_ID, "Somebody", "Else"))  # von der Suche nicht gefunden
+    api.folders.add(folder, "Mix")
+    api.sync.start(folder)
+    wait_for(api, "ready")
+    assert len(api.sync.summary()["open"]) == 2  # Hinweis „erst prüfen“ / „direkt weiter“
+    searches = len(spotify.searches())
+    progress = len(events.named("sync.progress"))
+
+    # „erst prüfen“: Review des Ordners, während der Sync bereitsteht
+    review = api.review.tracks(folder)
+    missing = next(t["fingerprint"] for t in review["tracks"] if t["filename"] == "Nobody - Missing.mp3")
+    api.review.accept_link(folder, missing, f"https://open.spotify.com/track/{MISSING_ID}")
+    two = next(t["fingerprint"] for t in review["tracks"] if t["filename"].startswith("Alpha - Two"))
+    api.review.not_on_spotify(folder, two)
+
+    # zurück zum Änderungsplan desselben Syncs – ohne erneutes Einlesen oder Suchen
+    assert api.sync.status()["state"] == "ready"
+    summary = api.sync.summary()
+    plan = api.sync.plan()
+    assert summary["open"] == []
+    assert summary["counts"]["manual"] == 1
+    assert summary["counts"]["not_on_spotify"] == 1
+    assert sorted(t["id"] for t in plan["added"]) == [MISSING_ID, "id_one"]
+    assert len(spotify.searches()) == searches
+    assert len(events.named("sync.progress")) == progress
+
+    api.sync.confirm()
+    [playlist] = spotify.playlists.values()
+    assert sorted(playlist["items"]) == [MISSING_ID, "id_one"]
+
+
+def test_continue_directly_shows_plan_without_review(api, music, spotify):
+    folder = _mix_folder(music, spotify)
+    api.folders.add(folder, "Mix")
+    api.sync.start(folder)
+    wait_for(api, "ready")
+    assert len(api.sync.summary()["open"]) == 2
+
+    plan = api.sync.plan()  # „direkt weiter“
+
+    assert sorted(t["id"] for t in plan["added"]) == ["id_one", "id_two"]  # ungefähr kommt mit
+    assert api.review.tracks(api.sync.status()["folder"])["open_count"] == 2  # nichts entschieden
+    api.sync.confirm()
+    [playlist] = spotify.playlists.values()
+    assert sorted(playlist["items"]) == ["id_one", "id_two"]
