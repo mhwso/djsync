@@ -5,6 +5,7 @@
 //
 // Ansichten liegen in js/views/ und werden in js/views/index.js eingetragen.
 
+import { api } from "./api.js";
 import { h } from "./dom.js";
 import { showUpdateNotice } from "./update.js";
 import { views, DEFAULT_VIEW } from "./views/index.js";
@@ -41,4 +42,11 @@ async function render() {
 
 window.addEventListener("hashchange", render);
 render();
+
+// Einrichtung automatisch zeigen, wenn Client-ID oder Anmeldung fehlen
+api("setup.status")
+  .then((status) => {
+    if (status.needed && parseHash().name !== "setup") navigate("setup");
+  })
+  .catch((err) => console.error(err));
 showUpdateNotice(); // läuft nebenher, blockiert den Start nicht

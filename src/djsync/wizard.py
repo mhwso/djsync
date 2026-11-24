@@ -20,6 +20,9 @@ from .spotify import SpotifyError
 
 DASHBOARD_URL = "https://developer.spotify.com/dashboard"
 REDIRECT_URI = "http://127.0.0.1:8888/callback"
+INVALID_CLIENT_ID = (
+    "Das sieht nicht nach einer Client ID aus (32 Zeichen aus 0–9 und a–f). Bitte erneut kopieren."
+)
 
 
 class Cancelled(Exception):
@@ -47,7 +50,7 @@ def cmd_setup(args) -> None:
         value = ask("Client ID hier einfügen: ").strip()
         if is_valid_client_id(value):
             break
-        ui.warn("Das sieht nicht nach einer Client ID aus (32 Zeichen aus 0–9 und a–f). Bitte erneut kopieren.")
+        ui.warn(INVALID_CLIENT_ID)
     save_client_id(value)
     ui.success(f"Client ID gespeichert [muted]({CONFIG_FILE})[/]")
     ui.info("")
