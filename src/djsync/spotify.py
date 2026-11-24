@@ -28,9 +28,10 @@ class SpotifyError(Exception):
 
 
 class SpotifyClient:
-    def __init__(self, auth: Auth):
+    def __init__(self, auth: Auth, *, transport: httpx.BaseTransport | None = None):
         self.auth = auth
-        self.http = httpx.Client(timeout=30)
+        # transport: in Tests z. B. httpx.MockTransport statt echter Netzwerkzugriffe
+        self.http = httpx.Client(timeout=30, transport=transport)
 
     def close(self) -> None:
         self.http.close()
@@ -109,6 +110,10 @@ class SpotifyClient:
         body = {k: v for k, v in {"name": name, "description": description}.items() if v is not None}
         if body:
             self._request("PUT", f"/playlists/{playlist_id}", json=body)
+
+    def unfollow_playlist(self, playlist_id: str) -> None:
+        """Entfernt die Playlist aus der eigenen Bibliothek – bei Spotify das Löschen einer Playlist."""
+        self._request("DELETE", f"/playlists/{playlist_id}/followers")
 
     def playlist_track_ids(self, playlist_id: str) -> list[str]:
         ids = []

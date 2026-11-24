@@ -1,0 +1,161 @@
+/* Grundlagen: Farben, Schrift, Layout und gemeinsame Bausteine.
+   Das Theme folgt der Windows-Einstellung über prefers-color-scheme (kein manueller Wechsel). */
+
+:root {
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --surface-2: #efefec;
+  --border: #dcdcd7;
+  --text: #1c1c1a;
+  --muted: #6b6b66;
+  --accent: #1a7f4b;
+  --accent-text: #ffffff;
+  --warn: #a15c00;
+  --warn-bg: #fff3df;
+  --open: #8a4b00;
+  --open-bg: #ffe9c7;
+  --ok: #1a7f4b;
+  --ok-bg: #ddf3e6;
+  --danger: #b3261e;
+  --focus: #2b6cd6;
+
+  --radius: 8px;
+  --gap: 16px;
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615;
+    --surface: #1f1f1e;
+    --surface-2: #2a2a28;
+    --border: #3a3a37;
+    --text: #ececea;
+    --muted: #a3a39d;
+    --accent: #3ccf82;
+    --accent-text: #0d1f15;
+    --warn: #f2b45c;
+    --warn-bg: #3a2a12;
+    --open: #ffc477;
+    --open-bg: #3d2b10;
+    --ok: #6fdca1;
+    --ok-bg: #173123;
+    --danger: #ff8a80;
+    --focus: #7aa7ff;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 var(--font);
+  display: flex;
+  flex-direction: column;
+}
+
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+a { color: inherit; }
+
+/* ---- Kopfzeile ------------------------------------------------------------ */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.app-title {
+  font-weight: 650;
+  font-size: 16px;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+}
+
+.app-nav { display: flex; gap: 4px; margin-left: auto; }
+
+.app-main {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 20px 40px;
+}
+
+.app-main:focus { outline: none; }
+
+/* ---- Gemeinsame Bausteine ------------------------------------------------- */
+
+.view-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap);
+  margin: 0 auto 16px;
+  max-width: 960px;
+}
+
+.view-head h1 { font-size: 20px; font-weight: 600; margin: 0; }
+
+.view-body { max-width: 960px; margin: 0 auto; }
+
+.muted { color: var(--muted); }
+
+.mono { font-family: var(--font-mono); font-size: 12px; }
+
+.button {
+  font: inherit;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.button:hover { background: var(--surface-2); }
+
+.button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge.open { background: var(--open-bg); color: var(--open); }
+.badge.ok { background: var(--ok-bg); color: var(--ok); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+
+.notice {
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.notice.error { border-color: var(--danger); color: var(--danger); }
+
+.empty {
+  text-align: center;
+  padding: 48px 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--muted);
+}
+
+.empty strong { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
