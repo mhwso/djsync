@@ -1,8 +1,9 @@
 // Startbildschirm: alle Ordner mit Playlist-Name, letztem Sync und Anzahl offener Tracks.
 // Die Zahlen sind der Stand vom letzten Sync bzw. Review, es wird nichts neu eingelesen.
 
-import { api, errorMessage } from "../api.js";
+import { api, errorMessage, on } from "../api.js";
 import { h } from "../dom.js";
+import { addFolder, chooseFolder, removeFolder, renameFolder } from "../folder-dialogs.js";
 import { absoluteTime, plural, relativeTime } from "../format.js";
 
 function lastSync(folder) {
@@ -26,7 +27,19 @@ function state(folder) {
   return h("div", { class: "folder-state" }, badges);
 }
 
-function folderRow(folder) {
+function folderActions(folder, reload) {
+  const run = (dialog) => async () => {
+    if (await dialog(folder)) reload();
+  };
+  return h(
+    "div",
+    { class: "folder-actions" },
+    h("button", { type: "button", class: "button small", onclick: run(renameFolder) }, "Umbenennen"),
+    h("button", { type: "button", class: "button small", onclick: run(removeFolder) }, "Entfernen"),
+  );
+}
+
+function folderRow(folder, reload) {
   const name = folder.playlist_url
     ? h("a", { href: folder.playlist_url, target: "_blank", title: "Playlist in Spotify öffnen" }, folder.name)
     : folder.name;
@@ -41,6 +54,7 @@ function folderRow(folder) {
     ),
     h("div", { class: "folder-sync" }, lastSync(folder)),
     state(folder),
+    folderActions(folder, reload),
   );
 }
 
@@ -49,27 +63,46 @@ export default {
 
   async render(root) {
     const body = h("div", { class: "view-body" }, h("p", { class: "muted" }, "Lade Ordner …"));
-    root.append(h("div", { class: "view-head" }, h("h1", {}, "Ordner")), body);
+    const added = (changed) => changed && load();
+    const addButton = h(
+      "button",
+      { type: "button", class: "button primary", onclick: async () => added(await chooseFolder()) },
+      "Ordner hinzufügen",
+    );
+    root.append(h("div", { class: "view-head" }, h("h1", {}, "Ordner"), addButton), body);
 
-    let folders;
-    try {
-      folders = await api("folders.list");
-    } catch (err) {
-      body.replaceChildren(h("p", { class: "notice error" }, errorMessage(err)));
-      return;
-    }
+    async function load() {
+      let folders;
+      try {
+        folders = await api("folders.list");
+      } catch (err) {
+        body.replaceChildren(h("p", { class: "notice error" }, errorMessage(err)));
+        return;
+      }
 
-    if (folders.length === 0) {
+      if (folders.length === 0) {
+        body.replaceChildren(
+          h(
+            "div",
+            { class: "empty" },
+            h("strong", {}, "Noch keine Ordner"),
+            "Ordner über „Ordner hinzufügen“ wählen oder einfach ins Fenster ziehen.",
+          ),
+        );
+        return;
+      }
       body.replaceChildren(
-        h(
-          "div",
-          { class: "empty" },
-          h("strong", {}, "Noch keine Ordner"),
-          "Sobald ein Ordner synchronisiert ist, erscheint er hier mit seiner Playlist.",
-        ),
+        h("ul", { class: "folder-list" }, folders.map((f) => folderRow(f, load))),
+        h("p", { class: "muted drop-hint" }, "Weitere Ordner einfach ins Fenster ziehen."),
       );
-      return;
     }
-    body.replaceChildren(h("ul", { class: "folder-list" }, folders.map(folderRow)));
+
+    // Ins Fenster gezogene Ordner meldet Python (Browser kennen keine vollen Pfade)
+    const off = on("folders.dropped", async ({ paths }) => {
+      for (const path of paths) added(await addFolder(path));
+    });
+
+    await load();
+    return off;
   },
 };

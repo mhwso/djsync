@@ -111,6 +111,10 @@ class SpotifyClient:
         if body:
             self._request("PUT", f"/playlists/{playlist_id}", json=body)
 
+    def unfollow_playlist(self, playlist_id: str) -> None:
+        """Entfernt die Playlist aus der eigenen Bibliothek – bei Spotify das Löschen einer Playlist."""
+        self._request("DELETE", f"/playlists/{playlist_id}/followers")
+
     def playlist_track_ids(self, playlist_id: str) -> list[str]:
         ids = []
         for entry in self._paginate(f"/playlists/{playlist_id}/items", {"limit": 50}):
