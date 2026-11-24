@@ -22,10 +22,12 @@
   top: 0;
 }
 
-.review-filters { display: flex; border-bottom: 1px solid var(--border); }
+/* Fünf Reiter: bei schmaler Spalte in zwei Zeilen */
+.review-filters { display: flex; flex-wrap: wrap; border-bottom: 1px solid var(--border); }
 
 .review-filter {
-  flex: 1;
+  flex: 1 1 auto;
+  white-space: nowrap;
   font: inherit;
   padding: 8px 6px;
   border: 0;

@@ -22,6 +22,7 @@ def folder_entry(db: Database, row) -> dict:
         "playlist_url": PLAYLIST_URL.format(row["playlist_id"]) if row["playlist_id"] else None,
         "last_sync": row["last_sync"],
         "open_count": db.open_count(row["folder"]),
+        "open_counts": db.open_counts(row["folder"]),
         "reachable": os.path.isdir(row["folder"]),
     }
 
@@ -38,6 +39,7 @@ class FoldersApi(ApiArea):
           playlist_url  Link zur Playlist oder None
           last_sync     ISO-Zeitpunkt des letzten Syncs oder None (nie bzw. vor der GUI)
           open_count    Anzahl offener Tracks
+          open_counts   dieselben je Treffer-Status: {approximate, not_found}
           reachable     ob der Ordner gerade erreichbar ist (z. B. Laufwerk eingebunden)
         """
         with self._ctx.db() as db:

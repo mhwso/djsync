@@ -197,13 +197,22 @@ class Database:
 
     def open_count(self, folder: str) -> int:
         """Anzahl offener Tracks (ungefähr, nicht gefunden) im Ordner – Stand der Datenbank, ohne Einlesen."""
+        return sum(self.open_counts(folder).values())
+
+    def open_counts(self, folder: str) -> dict[str, int]:
+        """Offene Tracks im Ordner je Treffer-Status, z. B. {"approximate": 2, "not_found": 1}.
+
+        Jeder Status aus REVIEW_STATUSES ist enthalten, auch mit 0. Stand der Datenbank, ohne Einlesen.
+        """
         placeholders = ", ".join("?" * len(REVIEW_STATUSES))
-        return self.conn.execute(
-            f"""SELECT COUNT(DISTINCT f.fingerprint) FROM files f
+        rows = self.conn.execute(
+            f"""SELECT m.status, COUNT(DISTINCT f.fingerprint) FROM files f
                 JOIN matches m ON m.fingerprint = f.fingerprint
-                WHERE f.path LIKE ? ESCAPE '\\' AND m.status IN ({placeholders})""",
+                WHERE f.path LIKE ? ESCAPE '\\' AND m.status IN ({placeholders})
+                GROUP BY m.status""",
             (_like_prefix(folder), *sorted(REVIEW_STATUSES)),
-        ).fetchone()[0]
+        ).fetchall()
+        return {status: 0 for status in sorted(REVIEW_STATUSES)} | {status: n for status, n in rows}
 
     def move_folder(self, old_folder: str, new_folder: str) -> bool:
         """Ändert den Pfad des Ordners (Relink). False, wenn es den alten Ordner nicht gibt."""

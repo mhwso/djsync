@@ -33,6 +33,7 @@ def test_synced_folder_shows_playlist_last_sync_and_open_tracks(api, run_cli, mu
     assert entry["playlist_url"] == f"https://open.spotify.com/playlist/{entry['playlist_id']}"
     assert entry["last_sync"]  # ISO-Zeitpunkt
     assert entry["open_count"] == 2  # ungefähr + nicht gefunden
+    assert entry["open_counts"] == {"approximate": 1, "not_found": 1}
     assert entry["reachable"] is True
 
 
@@ -87,6 +88,7 @@ def test_existing_database_is_taken_over(api, paths, music, spotify):
             "playlist_url": f"https://open.spotify.com/playlist/{playlist_id}",
             "last_sync": None,  # in der alten Datenbank nicht gespeichert
             "open_count": 2,  # derselbe Track in zwei Dateien zählt einmal
+            "open_counts": {"approximate": 1, "not_found": 1},
             "reachable": True,
         }
     ]

@@ -34,7 +34,13 @@ _ID_RE = re.compile(r"^[A-Za-z0-9]{22}$")
 OPEN = "open"  # ungefähr oder nicht gefunden
 DECIDED = "decided"  # manuell oder nicht auf Spotify
 EXACT_FILTER = "exact"  # exakte Treffer
-FILTERS = {OPEN: REVIEW_STATUSES, DECIDED: DECIDED_STATUSES, EXACT_FILTER: frozenset({EXACT})}
+FILTERS = {
+    OPEN: REVIEW_STATUSES,
+    APPROXIMATE: frozenset({APPROXIMATE}),  # nur ungefähr
+    NOT_FOUND: frozenset({NOT_FOUND}),  # nur nicht gefunden
+    DECIDED: DECIDED_STATUSES,
+    EXACT_FILTER: frozenset({EXACT}),
+}
 
 
 @dataclass(frozen=True)

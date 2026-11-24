@@ -70,8 +70,10 @@ class ReviewApi(ApiArea):
     def tracks(self, folder: str, filter: str = review_core.OPEN) -> dict:
         """Tracks des Ordners für die Liste, nach Dateipfad sortiert.
 
-        filter: "open" (Standard), "decided" oder "exact". Rückgabe:
+        filter: "open" (Standard, ungefähr und nicht gefunden), "approximate", "not_found",
+        "decided" oder "exact". Rückgabe:
           folder, filter, open_count  – Anzahl offener Tracks im Ordner (unabhängig vom Filter)
+          open_counts                 – dieselben je Status: {approximate, not_found}
           tracks                      – je Track: fingerprint, filename, artist, title, status,
                                         open, decided
         """
@@ -84,6 +86,7 @@ class ReviewApi(ApiArea):
                 "folder": folder,
                 "filter": filter,
                 "open_count": db.open_count(folder),
+                "open_counts": db.open_counts(folder),
                 "tracks": [_summary(t) for t in tracks],
             }
 

@@ -10,9 +10,15 @@ export const STATUS_LABELS = {
 
 export const FILTERS = [
   { id: "open", label: "Offen" },
+  { id: "approximate", label: "Ungefähr" },
+  { id: "not_found", label: "Nicht gefunden" },
   { id: "decided", label: "Entschieden" },
   { id: "exact", label: "Exakt" },
 ];
+
+// Filter, die nur einen Teil der offenen Tracks zeigen: Ein entschiedener Track verschwindet
+// daraus, weitergearbeitet wird in derselben Liste.
+export const OPEN_SUBFILTERS = new Set(["approximate", "not_found"]);
 
 // Badge-Klasse je Treffer-Status (Farben aus base.css)
 export function statusClass(track) {
