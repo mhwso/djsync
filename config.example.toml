@@ -1,5 +1,7 @@
-# Kopieren nach ~/.config/djsync/config.toml – alle Werte sind optional.
-# Die Client-ID gehört ausschließlich in die .env im Projektordner (SPOTIFY_CLIENT_ID=..., siehe .env.example).
+# Kopieren nach ~/.config/djsync/config.toml (Windows: %APPDATA%\djsync\config.toml).
+# `djsync setup` legt die Datei mit der Client-ID an – alle übrigen Werte sind optional.
+
+# client_id = "deine-32-stellige-client-id"
 
 # Muss exakt so im Spotify-Dashboard als Redirect-URI eingetragen sein
 redirect_uri = "http://127.0.0.1:8888/callback"

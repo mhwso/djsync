@@ -5,15 +5,16 @@ import os
 import sys
 
 from .auth import Auth, AuthError
-from .config import DB_FILE, SCOPES, TOKEN_FILE, ConfigError, load_config
+from .config import DB_FILE, IS_WINDOWS, SCOPES, TOKEN_FILE, ConfigError, load_config
 from .db import Database
-from .filenames import windows_to_wsl
+from .filenames import normalize_folder
 from .models import APPROXIMATE, EXACT, MANUAL, NOT_FOUND, NOT_ON_SPOTIFY, LocalFile
 from .plan import Plan
 from .review import pending_reviews, run_review
 from .scanner import scan_folder
 from .spotify import SpotifyClient, SpotifyError
 from .sync import build_plan, description_text, match_files, playlist_files, playlist_name, summarize
+from .wizard import cmd_setup, run_interactive
 
 MAX_LISTED = 20
 
@@ -28,8 +29,7 @@ class Abort(Exception):
 
 
 def resolve_folder(arg: str) -> str:
-    path = os.path.abspath(os.path.expanduser(windows_to_wsl(arg)))
-    return path.rstrip("/") or "/"
+    return normalize_folder(arg)
 
 
 def setup(need_client: bool = True):
@@ -241,6 +241,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="djsync", description="Spiegelt lokale Musikordner als Spotify-Playlists.")
     sub = p.add_subparsers(dest="command", required=True)
 
+    s = sub.add_parser("setup", help="eigene Spotify-App einrichten und anmelden (einmalig)")
+    s.set_defaults(func=cmd_setup)
+
     s = sub.add_parser("login", help="bei Spotify anmelden")
     s.set_defaults(func=cmd_login)
 
@@ -273,7 +276,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
-    args = build_parser().parse_args(argv)
+    argv = sys.argv[1:] if argv is None else list(argv)
+    _prepare_console()
+    parser = build_parser()
+    # Doppelklick (keine Argumente) oder Ordner auf die .exe gezogen → geführter Modus
+    if not argv and sys.stdin.isatty():
+        return run_interactive(None)
+    if len(argv) == 1 and argv[0] not in _commands(parser) and os.path.isdir(normalize_folder(argv[0])):
+        return run_interactive(argv[0])
+    args = parser.parse_args(argv)
     try:
         args.func(args)
     except (Abort, ConfigError, AuthError, SpotifyError) as e:
@@ -283,6 +294,35 @@ def main(argv=None) -> int:
         print("\nAbgebrochen.", file=sys.stderr)
         return 130
     return 0
+
+
+def _commands(parser: argparse.ArgumentParser) -> set[str]:
+    for action in parser._subparsers._group_actions:  # noqa: SLF001
+        return set(action.choices)
+    return set()
+
+
+def _prepare_console() -> None:
+    """Windows-Konsole: ANSI-Steuerzeichen aktivieren, nicht darstellbare Zeichen ersetzen."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            # Windows: umgeleitete Ausgabe sonst in der alten Codepage (✓ → ?); im Konsolenfenster egal
+            stream.reconfigure(encoding="utf-8" if IS_WINDOWS else None, errors="replace")
+        except (AttributeError, ValueError):
+            pass
+    if not IS_WINDOWS:
+        return
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32
+        for handle_id in (-11, -12):  # STD_OUTPUT_HANDLE, STD_ERROR_HANDLE
+            handle = kernel32.GetStdHandle(handle_id)
+            mode = ctypes.c_uint32()
+            if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+                kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

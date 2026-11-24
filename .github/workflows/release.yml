@@ -1,0 +1,41 @@
+name: Windows-Release
+
+# Ein Tag wie v0.2.0 baut djsync.exe und hängt sie an ein GitHub-Release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Tests
+        run: |
+          python -m pip install --quiet . pytest
+          python -m pytest -q
+
+      - name: djsync.exe bauen
+        shell: pwsh
+        run: .\scripts\build_exe.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: djsync-windows
+          path: dist/djsync.exe
+
+      - name: Release veröffentlichen
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/djsync.exe
+          generate_release_notes: true
