@@ -17,7 +17,3 @@ build/
 
 # IDE
 .idea/
-
-# Windows-Build
-.build-venv/
-*.spec

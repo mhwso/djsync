@@ -6,6 +6,7 @@
 // Ansichten liegen in js/views/ und werden in js/views/index.js eingetragen.
 
 import { h } from "./dom.js";
+import { showUpdateNotice } from "./update.js";
 import { views, DEFAULT_VIEW } from "./views/index.js";
 
 const root = document.getElementById("view");
@@ -40,3 +41,4 @@ async function render() {
 
 window.addEventListener("hashchange", render);
 render();
+showUpdateNotice(); // läuft nebenher, blockiert den Start nicht

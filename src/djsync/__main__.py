@@ -1,4 +1,7 @@
-"""Einstiegspunkt für `python -m djsync` und die gebaute djsync.exe."""
+"""Einstiegspunkt für `python -m djsync` (CLI, Linux/WSL).
+
+Die Windows-App startet über packaging/djsync_gui.py.
+"""
 
 import sys
 
