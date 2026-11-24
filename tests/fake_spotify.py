@@ -71,7 +71,10 @@ class FakeSpotify:
     def handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         if self.on_request:
-            self.on_request(request)
+            # Der Haken darf eine eigene Antwort liefern, z. B. einen Fehler wie 429
+            response = self.on_request(request)
+            if response is not None:
+                return response
         path = request.url.path.removeprefix("/v1")
         parts = path.strip("/").split("/")
         body = json.loads(request.content) if request.content else None

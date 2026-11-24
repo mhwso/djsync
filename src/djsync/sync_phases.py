@@ -63,6 +63,7 @@ class SyncRun:
     playlist_lost: bool = False  # verknüpfte Playlist existiert auf Spotify nicht mehr
     found: int = 0  # Audiodateien im Ordner
     fresh: int = 0  # davon neu eingelesen
+    stored_name: str | None = None  # in djsync gespeicherter Playlist-Name (z. B. beim Hinzufügen gewählt)
 
 
 @dataclass(frozen=True)
@@ -163,7 +164,9 @@ def load_playlist(
     run.playlist_id = playlist_id
     run.playlist_name = (playlist or {}).get("name")
     run.current = current
-    run.playlist_lost = row is not None and playlist_id is None
+    run.stored_name = row["name"] if row else None
+    # Verloren ist nur eine schon verknüpfte Playlist; ein Ordner ohne Playlist-ID wartet auf den ersten Sync
+    run.playlist_lost = row is not None and row["playlist_id"] is not None and playlist_id is None
     if not run.files and playlist_id and db.managed_tracks(playlist_id) & set(current):
         raise EmptyFolderError()
 
@@ -220,12 +223,17 @@ def summarize_run(run: SyncRun, db: Database) -> SyncSummary:
 def plan_changes(run: SyncRun, db: Database, name: str | None = None) -> ChangePlan:
     """Phase 3: Änderungsplan aus den aktuellen Zuordnungen – beliebig oft, ohne Spotify-Anfragen.
 
-    name: gewünschter Playlist-Name (Präfix wird ergänzt); bei einer neuen Playlist sonst der Ordnername.
+    name: gewünschter Playlist-Name (Präfix wird ergänzt). Ohne name bekommt eine neue Playlist den
+    gespeicherten Namen des Ordners (unverändert, so wie beim Hinzufügen gewählt), sonst den Ordnernamen.
     """
     plan = build_plan(run.files, db, run.current, run.playlist_id)
     labels = {sid: os.path.basename(f.path) for f, sid in playlist_files(run.files, db)}
     if run.playlist_id is None:
-        return ChangePlan(plan, labels, playlist_name(name or os.path.basename(run.folder)), None)
+        if name:
+            new_name = playlist_name(name)
+        else:
+            new_name = run.stored_name or playlist_name(os.path.basename(run.folder))
+        return ChangePlan(plan, labels, new_name, None)
     wanted = playlist_name(name) if name else None
     rename = wanted if wanted and wanted != run.playlist_name else None
     return ChangePlan(plan, labels, None, rename)
