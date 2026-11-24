@@ -7,11 +7,12 @@
 //   player.skip(±1)       – um die Sprungweite vor- bzw. zurückspringen (→ / ←)
 //   player.destroy()      – beim Verlassen des Reviews
 //
-// Quellen: Der Player spielt immer genau eine Quelle (die aktive). Heute gibt es nur die lokale
-// Datei („local“). Weitere Quellen (#18: Spotify-Vorschläge) meldet man pro Track an:
+// Quellen: Der Player spielt immer genau eine Quelle (die aktive). Nach select(fp) gibt es die
+// lokale Datei („local“); die Vorschläge meldet spotify.js an, sobald die Detailansicht da ist:
 //
-//   player.addSource(source)        – z. B. in einer Funktion aus sourceFactories
+//   player.addSource(source)        – weitere Quelle für den aktuellen Track
 //   player.switchTo(id)             – A/B-Wechsel: übernimmt die Position der aktiven Quelle
+//   player.listen(id)               – auf die Quelle wechseln und abspielen (bzw. pausieren)
 //
 // Eine Quelle ist ein Objekt mit
 //   id, label                        – z. B. "local" / "Lokale Datei", "spotify:<id>" / "Vorschlag 2"
@@ -21,13 +22,10 @@
 //   position, duration, playing      – Getter; duration ist NaN, solange unbekannt
 //   unload()                         – Wiedergabe beenden und Ressourcen freigeben
 //   onchange                         – wird vom Player gesetzt; die Quelle ruft es bei Änderungen
+//   notice                           – optional: Hinweis { text, href? }, z. B. „nur Vorschau“
 
 import { api, errorMessage } from "../../api.js";
 import { h } from "../../dom.js";
-
-// Funktionen ({ player, folder, fingerprint }) → void, gerufen nach jedem Trackwechsel.
-// #18 kann hier Spotify-Quellen für die Vorschläge anmelden.
-export const sourceFactories = [];
 
 // Lokale Datei über den Medien-Server der API-Schicht (AIFF kommt als umgewandelte WAV).
 export function localSource(folder, fingerprint) {
@@ -116,6 +114,13 @@ export function createPlayer({ folder, startS, skipS }) {
       e.target.blur(); // sonst landen Leertaste/Pfeile im Regler statt bei den Kürzeln
     },
   });
+  // Zurück zur lokalen Datei, wenn gerade ein Vorschlag aktiv ist (A/B, gleiche Position)
+  const localButton = h(
+    "button",
+    { class: "button player-local", title: "Lokale Datei an derselben Position anhören (a)", onclick: click(() => listen("local")) },
+    "▶ Lokale Datei ",
+    h("kbd", {}, "a"),
+  );
   const time = h("span", { class: "player-time mono" });
   const sourceLabel = h("span", { class: "player-source" });
   const statusLine = h("span", { class: "player-status", "aria-live": "polite" });
@@ -123,7 +128,7 @@ export function createPlayer({ folder, startS, skipS }) {
     "div",
     { class: "player" },
     h("div", { class: "player-controls" }, playButton, backButton, fwdButton, bar, time),
-    h("div", { class: "player-info" }, sourceLabel, statusLine),
+    h("div", { class: "player-info" }, sourceLabel, localButton, statusLine),
   );
 
   // Knöpfe nach dem Klick nicht fokussiert lassen: sonst löst die Leertaste sie zusätzlich aus
@@ -144,9 +149,15 @@ export function createPlayer({ folder, startS, skipS }) {
     bar.max = Number.isFinite(dur) ? Math.floor(dur) : 0;
     if (document.activeElement !== bar) bar.value = Math.floor(pos);
     time.textContent = Number.isFinite(dur) ? `${clock(pos)} / ${clock(dur)}` : "";
-    sourceLabel.textContent = sources.size > 1 && active ? active.label : "";
-    statusLine.textContent = status?.text ?? "";
+    sourceLabel.textContent = sources.size > 1 && active ? `Spielt: ${active.label}` : "";
+    localButton.hidden = !active || active.id === "local";
+    const notice = status ? null : active?.notice;
+    statusLine.replaceChildren(
+      status?.text ?? notice?.text ?? "",
+      notice?.href ? h("a", { href: notice.href }, notice.link ?? "Mehr") : "",
+    );
     statusLine.classList.toggle("error", Boolean(status?.error));
+    statusLine.classList.toggle("warn", Boolean(notice));
   }
 
   function addSource(source) {
@@ -166,10 +177,7 @@ export function createPlayer({ folder, startS, skipS }) {
     status = null;
     busy = false;
     fingerprint = fp;
-    if (fp) {
-      addSource(localSource(folder, fp));
-      for (const factory of sourceFactories) factory({ player: player, folder, fingerprint: fp });
-    }
+    if (fp) addSource(localSource(folder, fp));
     update();
   }
 
@@ -229,6 +237,15 @@ export function createPlayer({ folder, startS, skipS }) {
     }
   }
 
+  // Abspielknopf eines Vorschlags: läuft er schon, pausieren, sonst dorthin wechseln und abspielen
+  async function listen(id) {
+    if (!sources.has(id) || busy) return;
+    if (active?.id === id) return toggle();
+    const wasPlaying = active?.playing ?? false;
+    await switchTo(id);
+    if (!wasPlaying && active?.id === id) await play(active);
+  }
+
   function destroy() {
     select(null);
   }
@@ -239,6 +256,7 @@ export function createPlayer({ folder, startS, skipS }) {
     toggle,
     skip,
     switchTo,
+    listen,
     addSource,
     destroy,
     get fingerprint() {

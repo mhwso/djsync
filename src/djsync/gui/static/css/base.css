@@ -1,6 +1,9 @@
 /* Grundlagen: Farben, Schrift, Layout und gemeinsame Bausteine.
    Das Theme folgt der Windows-Einstellung über prefers-color-scheme (kein manueller Wechsel). */
 
+/* hidden gilt auch für Elemente mit eigenem display (z. B. .button) */
+[hidden] { display: none !important; }
+
 :root {
   --bg: #f6f6f4;
   --surface: #ffffff;

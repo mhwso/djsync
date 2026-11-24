@@ -89,3 +89,8 @@
 @keyframes setup-spin { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }
+
+/* Anmeldung im eingebetteten Spotify-Player */
+.setup-embed { margin-top: 12px; border-radius: 12px; overflow: hidden; max-width: 520px; }
+.setup-embed:empty { display: none; }
+.setup-embed iframe { display: block; border: 0; }

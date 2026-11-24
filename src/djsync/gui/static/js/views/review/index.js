@@ -13,7 +13,7 @@
 //   - leave(): Rückkehr nach dem Review; mit from=sync (Review aus dem Sync heraus) zurück zum
 //     Änderungsplan desselben Syncs, sonst zum Startbildschirm
 //   - onSelect: wird bei jedem Wechsel des ausgewählten Tracks gerufen
-//   - player.js: Anhören der lokalen Datei; weitere Quellen (#18 Spotify, A/B) über sourceFactories
+//   - player.js: Anhören (lokale Datei); spotify.js: Vorschläge im eingebetteten Player, A/B
 //   - keys.js / detail.js: Kürzel, Player-Knöpfe
 
 import { api, errorMessage, on } from "../../api.js";
@@ -25,6 +25,7 @@ import { handleKey, helpDialog } from "./keys.js";
 import { FILTERS } from "./labels.js";
 import { renderFilters, renderList } from "./list.js";
 import { createPlayer } from "./player.js";
+import { createListening } from "./spotify.js";
 
 // Funktionen (fingerprint | null) → void, gerufen nach jedem Wechsel des ausgewählten Tracks
 export const onSelect = [];
@@ -54,11 +55,14 @@ export default {
     const list = h("div", { class: "review-list-wrap" });
     const message = h("div", { class: "review-message", "aria-live": "polite" });
     const detail = h("div", { class: "review-detail" });
+    // Eingebetteter Spotify-Player; bleibt beim Neuzeichnen im DOM, sonst lädt das iframe neu
+    const embed = h("div", { class: "review-embed", "aria-label": "Spotify-Player" });
     const help = helpDialog();
 
     // Anhören: Startstelle und Sprungweite aus den Einstellungen (sonst die Standardwerte)
     const settings = await api("settings.get").catch(() => ({}));
     const player = createPlayer({ folder, startS: settings.start_position_s ?? 60, skipS: settings.skip_s ?? 30 });
+    const listening = createListening({ container: embed, player, onChange: () => state.detail && renderMain() });
 
     root.append(
       h(
@@ -74,7 +78,7 @@ export default {
           fromSync ? "Weiter zum Änderungsplan" : "Fertig",
         ),
       ),
-      h("div", { class: "review" }, h("aside", { class: "review-side" }, filters, list), h("section", { class: "review-main" }, message, detail)),
+      h("div", { class: "review" }, h("aside", { class: "review-side" }, filters, list), h("section", { class: "review-main" }, message, embed, detail)),
       help,
     );
 
@@ -89,6 +93,7 @@ export default {
     }
 
     function renderMain() {
+      embed.hidden = !listening.target; // nur, solange ein Track mit Vorschlägen gewählt ist
       message.replaceChildren(
         state.message ? h("p", { class: "notice error" }, state.message) : "",
         state.notice ? h("p", { class: "notice" }, state.notice) : "",
@@ -99,6 +104,7 @@ export default {
         detail.replaceChildren(renderDetail(state.detail, actions, state.link));
         // Die Bedienelemente bleiben dieselben, die Wiedergabe läuft beim Neuzeichnen weiter
         detail.querySelector(".review-player")?.append(player.element);
+        listening.attach(state.detail); // Vorschläge als Quellen, einmal je Track
       } else if (state.filter === "open" && (state.listing?.open_count ?? 0) === 0) {
         detail.replaceChildren(renderDone(leave, fromSync));
       } else {
@@ -350,6 +356,8 @@ export default {
       reset() {
         if (state.detail?.decided) decide("reset");
       },
+      listen: (id) => listening.listen(id),
+      listenTarget: () => listening.target,
     };
 
     const keyContext = {
@@ -376,6 +384,8 @@ export default {
       leave,
       togglePlay: () => player.toggle(),
       skipPlay: (direction) => player.skip(direction),
+      toggleAB: () => listening.toggleAB(),
+      cycleCandidate: (direction) => listening.cycle(direction),
     };
 
     function onKey(event) {
@@ -399,6 +409,7 @@ export default {
     return () => {
       document.removeEventListener("keydown", onKey);
       player.destroy();
+      listening.destroy();
       offProgress();
       for (const fn of onSelect) fn(null);
     };

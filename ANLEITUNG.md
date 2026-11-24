@@ -34,6 +34,10 @@ Einrichtung:
    - Haken bei **Web API**, Bedingungen akzeptieren, **Save**
 3. In der App auf **Settings** gehen, die **Client ID** kopieren und in djsync einfügen.
 4. Im Browser den Zugriff für djsync bestätigen.
+5. *Optional, aber empfohlen:* **Im Spotify-Player anmelden**. In einem eigenen Fenster von
+   djsync meldest du dich noch einmal bei Spotify an, danach **Anmeldung prüfen** klicken.
+   Ohne diesen Schritt hörst du Vorschläge im Review nur als 30-Sekunden-Vorschau. Die
+   Anmeldung bleibt gespeichert, auch nach einem Neustart.
 
 ## 3. Ordner synchronisieren
 
@@ -43,6 +47,21 @@ und zeigt dir vorher, was es an der Playlist ändern würde. Tracks, die nur ung
 bestätigst, entsteht die private Playlist **„DJSYNC - <Ordnername>“**.
 
 Später einfach wieder denselben Ordner synchronisieren: djsync gleicht die Playlist an.
+
+## 4. Im Review anhören und vergleichen
+
+Ob ein Vorschlag wirklich derselbe Mix ist wie deine Datei, hörst du am besten direkt:
+
+- **Leertaste** spielt die lokale Datei ab bzw. pausiert. Sie beginnt an der Startstelle
+  (Standard: 60 s), **→** und **←** springen vor und zurück.
+- **▶ Anhören** neben einem Vorschlag spielt ihn im eingebetteten Spotify-Player.
+- **a** schaltet zwischen deiner Datei und dem Vorschlag um, und zwar an derselben Stelle. So
+  hörst du sofort, ob es passt. **v** wählt den nächsten Vorschlag zum Vergleich.
+- **Spotify** öffnet den Vorschlag in der Spotify-App bzw. im Browser.
+
+Erscheint „Nur 30-Sekunden-Vorschau“, bist du im Spotify-Player nicht (mehr) angemeldet: über
+den Link zur Einrichtung und dort Schritt 5 erledigen. Alle Tastenkürzel zeigt **?** im Review.
+Startstelle und Sprungweite lassen sich unter **Einstellungen** ändern.
 
 ## Updates
 

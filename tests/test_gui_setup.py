@@ -208,3 +208,39 @@ def test_login_port_in_use_is_reported(api, browser):
         blocker.listen()
         with pytest.raises(ApiError, match=str(port)):
             api.setup.start_login()
+
+
+# ---- Anmeldung im eingebetteten Spotify-Player (ADR 0003) ------------------------------
+
+
+def test_player_login_is_open_at_first_and_optional(api):
+    status = api.setup.status()
+    assert status["player_login"] is False
+    # Ohne Anmeldung im Player laufen nur Vorschauen – die Einrichtung blockiert das nicht
+    assert status["needed"] is False
+
+
+def test_player_login_opens_spotify_in_own_window(api, windows, events):
+    api.setup.open_player_login()
+
+    assert len(windows.opened) == 1
+    url = urlparse(windows.opened[0]["url"])
+    assert (url.scheme, url.netloc) == ("https", "accounts.spotify.com")
+    # Nach dem Login zurück zum Web-Player, damit die Cookies für das Embed gesetzt sind
+    assert parse_qs(url.query)["continue"] == ["https://open.spotify.com/"]
+
+    windows.close()
+    assert events.named("setup.player_login_closed") == [None]
+
+
+def test_player_login_result_is_remembered(api, ctx):
+    assert api.setup.report_player_login(True)["player_login"] is True
+    # Neuer Start der App: derselbe Datenordner
+    assert type(api)(ctx).setup.status()["player_login"] is True
+
+
+def test_preview_only_marks_player_login_as_missing_again(api):
+    api.setup.report_player_login(True)
+
+    status = api.setup.report_player_login(False)
+    assert status["player_login"] is False

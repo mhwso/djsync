@@ -1,7 +1,7 @@
-"""Alles, was die API-Schicht von außen braucht: Pfade, HTTP-Transport, Events.
+"""Alles, was die API-Schicht von außen braucht: Pfade, HTTP-Transport, Events, Fenster.
 
 In der App kommt alles aus `AppContext.default()`. Tests bauen den Kontext mit temporären
-Ordnern, einem httpx.MockTransport (Spotify/GitHub-Fakes) und aufzeichnenden Events.
+Ordnern, einem httpx.MockTransport (Spotify/GitHub-Fakes), aufzeichnenden Events und Fenstern.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ from ..db import Database
 from ..spotify import SpotifyClient
 from .events import Events, NullEvents
 from .media import MediaServer
+from .windows import NullWindows, Windows
 
 
 @dataclass
@@ -29,10 +30,16 @@ class AppContext:
     transport: httpx.BaseTransport | None = None  # None = echtes Netzwerk
     events: Events = field(default_factory=NullEvents)
     media: MediaServer = field(default_factory=MediaServer)  # startet erst beim ersten Anhören
+    windows: Windows = field(default_factory=NullWindows)
 
     @classmethod
-    def default(cls, events: Events | None = None) -> AppContext:
-        return cls(config_file=config.CONFIG_FILE, data_dir=config.DATA_DIR, events=events or NullEvents())
+    def default(cls, events: Events | None = None, windows: Windows | None = None) -> AppContext:
+        return cls(
+            config_file=config.CONFIG_FILE,
+            data_dir=config.DATA_DIR,
+            events=events or NullEvents(),
+            windows=windows or NullWindows(),
+        )
 
     @property
     def db_file(self) -> Path:
@@ -41,6 +48,16 @@ class AppContext:
     @property
     def token_file(self) -> Path:
         return self.data_dir / "token.json"
+
+    @property
+    def webview_dir(self) -> Path:
+        """WebView2-Profil (Cookies): hält die Anmeldung im eingebetteten Spotify-Player."""
+        return self.data_dir / "webview"
+
+    @property
+    def player_login_file(self) -> Path:
+        """Vorhanden, wenn der eingebettete Player zuletzt ganze Tracks gespielt hat."""
+        return self.data_dir / "player-login"
 
     @property
     def cache_dir(self) -> Path:

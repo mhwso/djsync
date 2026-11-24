@@ -1,4 +1,5 @@
-"""Einrichtung: Status, Client-ID speichern, Anmeldung bei Spotify im System-Browser.
+"""Einrichtung: Status, Client-ID speichern, Anmeldung bei Spotify im System-Browser und im
+eingebetteten Spotify-Player.
 
 Nutzt dieselbe Logik wie `djsync setup`/`djsync login` (wizard.py, auth.py), nur ohne Terminal.
 
@@ -6,6 +7,12 @@ Die Anmeldung läuft wie in der CLI über PKCE mit lokalem Callback: `start_logi
 System-Browser und kehrt sofort zurück, ein Hintergrund-Thread wartet auf die Weiterleitung.
 Das Ergebnis meldet das Event `setup.login` mit {state, message}; `status()["login"]` liefert
 denselben Stand zum Nachfragen. Zustände: idle, waiting, success, error, cancelled.
+
+Anmeldung im eingebetteten Player (ADR 0003): Ohne sie spielt der Player nur 30-Sekunden-
+Vorschauen. `open_player_login()` öffnet die Spotify-Anmeldung in einem eigenen App-Fenster,
+das dasselbe WebView2-Profil nutzt wie das Hauptfenster. Ob die Anmeldung wirkt, sieht nur der
+Player selbst (ganzer Track oder Vorschau); die Oberfläche meldet das mit
+`report_player_login()`. Der Schritt ist optional und zählt nicht zu `needed`.
 """
 
 from __future__ import annotations
@@ -20,6 +27,10 @@ from ...wizard import DASHBOARD_URL, INVALID_CLIENT_ID, REDIRECT_URI
 from .base import ApiArea, ApiError
 
 LOGIN_EVENT = "setup.login"
+PLAYER_LOGIN_CLOSED_EVENT = "setup.player_login_closed"
+PLAYER_LOGIN_TITLE = "Im Spotify-Player anmelden"
+# Nach der Anmeldung weiter zum Web-Player, damit auch dessen Cookies gesetzt sind
+PLAYER_LOGIN_URL = "https://accounts.spotify.com/login?continue=https%3A%2F%2Fopen.spotify.com%2F"
 
 
 class _Login:
@@ -49,6 +60,7 @@ class SetupApi(ApiArea):
           redirect_uri   exakt so im Spotify-Dashboard einzutragen
           dashboard_url  Spotify-Developer-Dashboard
           login          Stand der Anmeldung im Browser: {state, message}
+          player_login   ob der eingebettete Player zuletzt ganze Tracks gespielt hat (optional)
         """
         auth = self._auth()
         client_id = auth is not None
@@ -60,6 +72,7 @@ class SetupApi(ApiArea):
             "redirect_uri": auth.redirect_uri if auth else REDIRECT_URI,
             "dashboard_url": DASHBOARD_URL,
             "login": dict(self._login_state),
+            "player_login": self._ctx.player_login_file.exists(),
         }
 
     def save_client_id(self, value: str) -> dict:
@@ -104,6 +117,26 @@ class SetupApi(ApiArea):
         login = self._login
         if login is not None:
             login.cancelled.set()
+
+    def open_player_login(self) -> None:
+        """Öffnet die Spotify-Anmeldung für den eingebetteten Player in einem eigenen Fenster.
+        Wird es geschlossen, meldet das Event `setup.player_login_closed`."""
+        self._ctx.windows.open(
+            PLAYER_LOGIN_TITLE,
+            PLAYER_LOGIN_URL,
+            on_closed=lambda: self._ctx.events.emit(PLAYER_LOGIN_CLOSED_EVENT),
+        )
+
+    def report_player_login(self, full_tracks: bool) -> dict:
+        """Ergebnis aus dem eingebetteten Player: True, wenn er einen ganzen Track gespielt hat,
+        False bei einer Vorschau (nicht oder nicht mehr angemeldet). Gibt den neuen Status zurück."""
+        file = self._ctx.player_login_file
+        if full_tracks:
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.touch()
+        else:
+            file.unlink(missing_ok=True)
+        return self.status()
 
     # ---- intern -------------------------------------------------------------
 
