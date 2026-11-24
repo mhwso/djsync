@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .api import Api
+from .api.folders import install_drop
 from .context import AppContext
 from .events import WebviewEvents
 
@@ -25,6 +26,7 @@ def main() -> int:
         min_size=(760, 480),
     )
     events.window = window
+    window.events.loaded += lambda: install_drop(window, events)
     # Eingebauter HTTP-Server statt file://, damit die ES-Module der Oberfläche laden
     webview.start(http_server=True)
     return 0

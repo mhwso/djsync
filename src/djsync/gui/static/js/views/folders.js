@@ -1,9 +1,14 @@
 // Startbildschirm: alle Ordner mit Playlist-Name, letztem Sync und Anzahl offener Tracks.
 // Die Zahlen sind der Stand vom letzten Sync bzw. Review, es wird nichts neu eingelesen.
 
-import { api, errorMessage } from "../api.js";
+import { api, errorMessage, on } from "../api.js";
 import { h } from "../dom.js";
+import { addFolder, chooseFolder, removeFolder, renameFolder } from "../folder-dialogs.js";
 import { absoluteTime, plural, relativeTime } from "../format.js";
+import { relinkDialog } from "../relink.js";
+
+// Ordner, für die Relink in dieser Sitzung schon automatisch angeboten wurde
+const offeredRelink = new Set();
 
 function lastSync(folder) {
   if (folder.last_sync) {
@@ -26,16 +31,39 @@ function state(folder) {
   return h("div", { class: "folder-state" }, badges);
 }
 
-// Knopf „Review“ öffnet das Review des Ordners (#/review?folder=…)
-function reviewButton(folder, navigate) {
+function folderActions(folder, reload, navigate) {
+  const run = (dialog) => async () => {
+    if (await dialog(folder)) reload();
+  };
   return h(
-    "button",
-    { class: "button" + (folder.open_count > 0 ? " primary" : ""), onclick: () => navigate("review", { folder: folder.folder }) },
-    "Review",
+    "div",
+    { class: "folder-actions" },
+    // Review des Ordners (#/review?folder=…)
+    h(
+      "button",
+      {
+        type: "button",
+        class: "button small" + (folder.open_count > 0 ? " primary" : ""),
+        onclick: () => navigate("review", { folder: folder.folder }),
+      },
+      "Review",
+    ),
+    h(
+      "button",
+      {
+        type: "button",
+        class: "button small",
+        title: "Verschobenen Ordner mit neuem Pfad verknüpfen",
+        onclick: run((f) => relinkDialog(f.folder, { unreachable: !f.reachable })),
+      },
+      "Relink …",
+    ),
+    h("button", { type: "button", class: "button small", onclick: run(renameFolder) }, "Umbenennen"),
+    h("button", { type: "button", class: "button small", onclick: run(removeFolder) }, "Entfernen"),
   );
 }
 
-function folderRow(folder, navigate) {
+function folderRow(folder, reload, navigate) {
   const name = folder.playlist_url
     ? h("a", { href: folder.playlist_url, target: "_blank", title: "Playlist in Spotify öffnen" }, folder.name)
     : folder.name;
@@ -50,36 +78,68 @@ function folderRow(folder, navigate) {
     ),
     h("div", { class: "folder-sync" }, lastSync(folder)),
     state(folder),
-    reviewButton(folder, navigate),
+    folderActions(folder, reload, navigate),
   );
+}
+
+// Nicht erreichbare Ordner: Relink einmal pro Sitzung automatisch anbieten
+async function offerRelink(folders, refresh) {
+  for (const folder of folders) {
+    if (folder.reachable || offeredRelink.has(folder.folder)) continue;
+    offeredRelink.add(folder.folder);
+    if (await relinkDialog(folder.folder, { unreachable: true })) {
+      refresh();
+      return;
+    }
+  }
 }
 
 export default {
   title: "Ordner",
 
-  async render(root, params, { navigate }) {
+  async render(root, params, ctx) {
     const body = h("div", { class: "view-body" }, h("p", { class: "muted" }, "Lade Ordner …"));
-    root.append(h("div", { class: "view-head" }, h("h1", {}, "Ordner")), body);
+    const added = (changed) => changed && load();
+    const addButton = h(
+      "button",
+      { type: "button", class: "button primary", onclick: async () => added(await chooseFolder()) },
+      "Ordner hinzufügen",
+    );
+    root.append(h("div", { class: "view-head" }, h("h1", {}, "Ordner"), addButton), body);
 
-    let folders;
-    try {
-      folders = await api("folders.list");
-    } catch (err) {
-      body.replaceChildren(h("p", { class: "notice error" }, errorMessage(err)));
-      return;
-    }
+    async function load() {
+      let folders;
+      try {
+        folders = await api("folders.list");
+      } catch (err) {
+        body.replaceChildren(h("p", { class: "notice error" }, errorMessage(err)));
+        return;
+      }
 
-    if (folders.length === 0) {
+      if (folders.length === 0) {
+        body.replaceChildren(
+          h(
+            "div",
+            { class: "empty" },
+            h("strong", {}, "Noch keine Ordner"),
+            "Ordner über „Ordner hinzufügen“ wählen oder einfach ins Fenster ziehen.",
+          ),
+        );
+        return;
+      }
       body.replaceChildren(
-        h(
-          "div",
-          { class: "empty" },
-          h("strong", {}, "Noch keine Ordner"),
-          "Sobald ein Ordner synchronisiert ist, erscheint er hier mit seiner Playlist.",
-        ),
+        h("ul", { class: "folder-list" }, folders.map((f) => folderRow(f, load, ctx.navigate))),
+        h("p", { class: "muted drop-hint" }, "Weitere Ordner einfach ins Fenster ziehen."),
       );
-      return;
+      offerRelink(folders, load);
     }
-    body.replaceChildren(h("ul", { class: "folder-list" }, folders.map((f) => folderRow(f, navigate))));
+
+    // Ins Fenster gezogene Ordner meldet Python (Browser kennen keine vollen Pfade)
+    const off = on("folders.dropped", async ({ paths }) => {
+      for (const path of paths) added(await addFolder(path));
+    });
+
+    await load();
+    return off;
   },
 };

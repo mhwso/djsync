@@ -22,6 +22,8 @@ from ..context import AppContext
 from .base import ApiArea, ApiError
 from .folders import FoldersApi
 from .review import ReviewApi
+from .relink import RelinkApi
+from .settings import SettingsApi
 
 __all__ = ["Api", "ApiArea", "ApiError"]
 
@@ -31,3 +33,5 @@ class Api:
         self._ctx = ctx
         self.folders = FoldersApi(ctx)
         self.review = ReviewApi(ctx)
+        self.relink = RelinkApi(ctx)
+        self.settings = SettingsApi(ctx)
