@@ -5,7 +5,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .models import Candidate, LocalFile, MatchRecord
+from .models import REVIEW_STATUSES, Candidate, LocalFile, MatchRecord
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS files (
@@ -28,11 +28,14 @@ CREATE TABLE IF NOT EXISTS matches (
     searched_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS playlists (
+-- Ein Ordner kann vor dem ersten Sync existieren: Playlist-Name gewählt, playlist_id noch NULL.
+-- Die Playlist wird erst beim ersten bestätigten Sync auf Spotify angelegt.
+CREATE TABLE IF NOT EXISTS folders (
     folder      TEXT PRIMARY KEY,
-    playlist_id TEXT NOT NULL UNIQUE,
     name        TEXT NOT NULL,
-    created_at  TEXT NOT NULL
+    playlist_id TEXT UNIQUE,
+    created_at  TEXT NOT NULL,
+    last_sync   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS managed_tracks (
@@ -41,6 +44,27 @@ CREATE TABLE IF NOT EXISTS managed_tracks (
     PRIMARY KEY (playlist_id, spotify_id)
 );
 """
+
+SCHEMA_VERSION = 1
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Bringt eine bestehende Datenbank auf SCHEMA_VERSION (PRAGMA user_version)."""
+    version = conn.execute("PRAGMA user_version").fetchone()[0]
+    if version < 1:
+        # Version 0: Ordner gab es nur über die Tabelle playlists mit Pflicht-playlist_id.
+        # Der Zeitpunkt des letzten Syncs ist dort nicht bekannt und bleibt leer.
+        has_old = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'playlists'"
+        ).fetchone()
+        if has_old:
+            conn.execute(
+                """INSERT OR IGNORE INTO folders (folder, name, playlist_id, created_at, last_sync)
+                   SELECT folder, name, playlist_id, created_at, NULL FROM playlists"""
+            )
+            conn.execute("DROP TABLE playlists")
+        conn.execute("PRAGMA user_version = 1")
+    conn.commit()
 
 
 def now_iso() -> str:
@@ -59,6 +83,7 @@ class Database:
         self.conn = sqlite3.connect(str(path))
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        _migrate(self.conn)
 
     def close(self) -> None:
         self.conn.close()
@@ -127,23 +152,42 @@ class Database:
             ),
         )
 
-    # ---- playlists -------------------------------------------------------
+    # ---- Ordner und Playlists ------------------------------------------------
 
     def get_playlist(self, folder: str) -> sqlite3.Row | None:
-        return self.conn.execute("SELECT * FROM playlists WHERE folder = ?", (folder,)).fetchone()
+        """Der Ordner-Eintrag (folder, name, playlist_id, created_at, last_sync), auch ohne Playlist."""
+        return self.conn.execute("SELECT * FROM folders WHERE folder = ?", (folder,)).fetchone()
 
     def all_playlists(self) -> list[sqlite3.Row]:
-        return list(self.conn.execute("SELECT * FROM playlists ORDER BY folder"))
+        """Ordner, deren Playlist schon auf Spotify existiert."""
+        return list(self.conn.execute("SELECT * FROM folders WHERE playlist_id IS NOT NULL ORDER BY folder"))
+
+    def all_folders(self) -> list[sqlite3.Row]:
+        return list(self.conn.execute("SELECT * FROM folders ORDER BY folder"))
 
     def save_playlist(self, folder: str, playlist_id: str, name: str) -> None:
         self.conn.execute(
-            "INSERT OR REPLACE INTO playlists (folder, playlist_id, name, created_at) VALUES (?, ?, ?, ?)",
-            (folder, playlist_id, name, now_iso()),
+            """INSERT INTO folders (folder, name, playlist_id, created_at) VALUES (?, ?, ?, ?)
+               ON CONFLICT(folder) DO UPDATE SET name = excluded.name, playlist_id = excluded.playlist_id""",
+            (folder, name, playlist_id, now_iso()),
         )
+
+    def mark_synced(self, folder: str) -> None:
+        self.conn.execute("UPDATE folders SET last_sync = ? WHERE folder = ?", (now_iso(), folder))
+
+    def open_count(self, folder: str) -> int:
+        """Anzahl offener Tracks (ungefähr, nicht gefunden) im Ordner – Stand der Datenbank, ohne Einlesen."""
+        placeholders = ", ".join("?" * len(REVIEW_STATUSES))
+        return self.conn.execute(
+            f"""SELECT COUNT(DISTINCT f.fingerprint) FROM files f
+                JOIN matches m ON m.fingerprint = f.fingerprint
+                WHERE f.path LIKE ? ESCAPE '\\' AND m.status IN ({placeholders})""",
+            (_like_prefix(folder), *sorted(REVIEW_STATUSES)),
+        ).fetchone()[0]
 
     def relink_playlist(self, old_folder: str, new_folder: str) -> bool:
         cur = self.conn.execute(
-            "UPDATE playlists SET folder = ? WHERE folder = ?", (new_folder, old_folder)
+            "UPDATE folders SET folder = ? WHERE folder = ?", (new_folder, old_folder)
         )
         return cur.rowcount > 0
 

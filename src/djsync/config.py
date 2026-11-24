@@ -77,11 +77,13 @@ def _read_env_file(path: Path) -> dict[str, str]:
     return values
 
 
-def load_config() -> Config:
+def load_config(config_file: Path | None = None) -> Config:
+    """Liest die Konfiguration; ohne `config_file` aus dem Standardort (CONFIG_FILE)."""
+    config_file = config_file or CONFIG_FILE
     env = _read_env_file(PROJECT_ENV_FILE)
     data: dict = {}
-    if CONFIG_FILE.exists():
-        with CONFIG_FILE.open("rb") as fh:
+    if config_file.exists():
+        with config_file.open("rb") as fh:
             data = tomllib.load(fh)
 
     # Reihenfolge: Umgebungsvariable, Projekt-.env (Entwicklung), config.toml (`djsync setup`)

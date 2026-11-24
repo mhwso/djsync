@@ -99,7 +99,7 @@ def cmd_sync(args) -> None:
         if playlist_id and playlist is None:
             playlist_id = None
         current = client.playlist_track_ids(playlist_id) if playlist_id else []
-    if row and playlist_id is None:
+    if row and row["playlist_id"] and playlist_id is None:
         ui.warn("Die verknüpfte Playlist existiert nicht mehr und wird neu angelegt.")
 
     if not files and playlist_id and db.managed_tracks(playlist_id) & set(current):
@@ -125,7 +125,14 @@ def cmd_sync(args) -> None:
 
     plan = build_plan(files, db, current, playlist_id)
     labels = {sid: os.path.basename(f.path) for f, sid in playlist_files(files, db)}
-    new_name = playlist_name(args.name or os.path.basename(folder)) if playlist_id is None else None
+    new_name = None
+    if playlist_id is None:
+        if args.name:
+            new_name = playlist_name(args.name)
+        elif row and not row["playlist_id"]:
+            new_name = row["name"]  # in der GUI gewählter Name, Playlist gibt es noch nicht
+        else:
+            new_name = playlist_name(os.path.basename(folder))
     print_plan(plan, labels, new_name)
 
     if args.dry_run:
@@ -152,6 +159,7 @@ def cmd_sync(args) -> None:
         if plan.has_changes:
             client.replace_playlist_items(playlist_id, plan.final)
         db.set_managed_tracks(playlist_id, plan.desired)
+        db.mark_synced(folder)
         db.commit()
     ui.playlist_link(playlist_id)
 
