@@ -191,3 +191,16 @@ def test_dropped_folders_are_reported_to_the_ui(events):
     handler.callback({"dataTransfer": {"files": [{"name": "ohne Pfad"}]}})
 
     assert events.named("folders.dropped") == [{"paths": ["D:\\Musik\\Techno"]}]
+
+
+def test_cli_status_lists_folder_added_in_the_app_before_its_first_sync(api, run_cli, music, capsys):
+    folder = music.folder("Techno", "Alpha - One.mp3")
+    api.folders.add(folder, "Peak Time")
+    capsys.readouterr()
+
+    assert run_cli("status") == 0
+    assert run_cli("status", folder) == 0
+
+    out = capsys.readouterr().out
+    assert out.count("Peak Time") == 2
+    assert "Noch keine Playlist" in out

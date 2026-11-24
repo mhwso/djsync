@@ -15,6 +15,10 @@ class RelinkError(Exception):
     """Relink nicht möglich; `str(e)` ist die Nutzermeldung."""
 
 
+class UnknownFolderError(RelinkError):
+    """Der alte Ordner ist nicht in djsync."""
+
+
 def relink_folder(db: Database, old: str, new: str) -> int:
     """Verknüpft den Ordner `old` mit `new` (beide in interner Form) und committet.
 
@@ -26,7 +30,7 @@ def relink_folder(db: Database, old: str, new: str) -> int:
     if db.get_playlist(new):
         raise RelinkError(f"Der Ordner {new} ist bereits mit einer Playlist verknüpft.")
     if not db.relink_playlist(old, new):
-        raise RelinkError(f"Der Ordner {old} ist kein Ordner von djsync.")
+        raise UnknownFolderError(f"Der Ordner {old} ist kein Ordner von djsync.")
     moved = db.move_files(old, new)
     db.commit()
     return moved
