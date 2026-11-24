@@ -223,6 +223,23 @@ def test_unknown_folder_is_reported(api, folder, music):
         api.review.tracks(str(music.root / "Anders"))
 
 
+def test_start_screen_shows_open_count_after_each_decision(api, folder):
+    two = fingerprint(api, folder, "Alpha - Two (Extended Mix).mp3")
+    missing = fingerprint(api, folder, "Nobody - Missing.mp3")
+
+    def open_count():
+        [entry] = api.folders.list()
+        return entry["open_count"]
+
+    assert open_count() == 2
+    api.review.not_on_spotify(folder, missing)
+    assert open_count() == 1
+    api.review.reset(folder, missing)
+    assert open_count() == 2
+    api.review.bulk_not_on_spotify(folder, [two, missing])
+    assert open_count() == 0
+
+
 # ---- Massenoperationen ----------------------------------------------------
 
 
