@@ -13,6 +13,7 @@
 [![Python](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fmhwso%2Fdjsync%2Fmain%2Fpyproject.toml&label=Python)](pyproject.toml)
 [![Plattform](https://img.shields.io/badge/Plattform-Windows%20%7C%20Linux%2FWSL-informational)](#installation)
 [![Spotify](https://img.shields.io/badge/Spotify-Web%20API-1DB954?logo=spotify&logoColor=white)](https://developer.spotify.com/documentation/web-api)
+[![Lizenz](https://img.shields.io/badge/Lizenz-GPL--3.0--or--later-blue)](LICENSE)
 [![Letzter Commit](https://img.shields.io/github/last-commit/mhwso/djsync?label=letzter%20Commit)](https://github.com/mhwso/djsync/commits/main)
 
 [Herunterladen](https://github.com/mhwso/djsync/releases/latest) · [Anleitung](ANLEITUNG.md) · [Fehler melden](https://github.com/mhwso/djsync/issues) · [Sicherheit](SECURITY.md)
@@ -116,3 +117,8 @@ Release. Der Workflow lässt sich auch manuell unter „Actions“ starten; die 
 als Artefakt am Lauf.
 
 Lokal unter Windows (PowerShell, Python 3.11+): `.\scripts\build_exe.ps1` → `dist\djsync.exe`.
+
+## 📄 Lizenz
+
+djsync steht unter der [GNU General Public License v3.0 oder später](LICENSE) (`GPL-3.0-or-later`).
+Die Windows-Version enthält unter anderem [mutagen](https://github.com/quodlibet/mutagen) (GPL-2.0-or-later).
