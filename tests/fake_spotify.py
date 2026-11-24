@@ -35,6 +35,7 @@ class FakeSpotify:
         self.requests: list[httpx.Request] = []
         self._next_id = 1
         self.on_request = None  # optionaler Haken, z. B. um während der Suche abzubrechen
+        self.unavailable: set[str] = set()  # Track-IDs, deren Einzelabruf mit 404 scheitert
 
     # ---- Testhilfen -------------------------------------------------------
 
@@ -104,6 +105,10 @@ class FakeSpotify:
                 pl["items"] += [u.removeprefix("spotify:track:") for u in body["uris"]]
                 return httpx.Response(201, json={"snapshot_id": "s"})
         if parts[0] == "tracks":
+            # Einzelabruf (z. B. Link im Review); unbekannte IDs liefern einen Platzhalter-Track,
+            # IDs in `unavailable` einen 404
+            if parts[1] in self.unavailable:
+                return httpx.Response(404, json={"error": {"status": 404, "message": "Non existing id"}})
             return httpx.Response(200, json=self._by_id(parts[1]))
         return httpx.Response(404, json={"error": {"status": 404, "message": f"unbekannt: {path}"}})
 

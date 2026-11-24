@@ -31,13 +31,23 @@ function state(folder) {
   return h("div", { class: "folder-state" }, badges);
 }
 
-function folderActions(folder, reload) {
+function folderActions(folder, reload, navigate) {
   const run = (dialog) => async () => {
     if (await dialog(folder)) reload();
   };
   return h(
     "div",
     { class: "folder-actions" },
+    // Review des Ordners (#/review?folder=…)
+    h(
+      "button",
+      {
+        type: "button",
+        class: "button small" + (folder.open_count > 0 ? " primary" : ""),
+        onclick: () => navigate("review", { folder: folder.folder }),
+      },
+      "Review",
+    ),
     h(
       "button",
       {
@@ -53,7 +63,7 @@ function folderActions(folder, reload) {
   );
 }
 
-function folderRow(folder, reload) {
+function folderRow(folder, reload, navigate) {
   const name = folder.playlist_url
     ? h("a", { href: folder.playlist_url, target: "_blank", title: "Playlist in Spotify öffnen" }, folder.name)
     : folder.name;
@@ -68,7 +78,7 @@ function folderRow(folder, reload) {
     ),
     h("div", { class: "folder-sync" }, lastSync(folder)),
     state(folder),
-    folderActions(folder, reload),
+    folderActions(folder, reload, navigate),
   );
 }
 
@@ -118,7 +128,7 @@ export default {
         return;
       }
       body.replaceChildren(
-        h("ul", { class: "folder-list" }, folders.map((f) => folderRow(f, load))),
+        h("ul", { class: "folder-list" }, folders.map((f) => folderRow(f, load, ctx.navigate))),
         h("p", { class: "muted drop-hint" }, "Weitere Ordner einfach ins Fenster ziehen."),
       );
       offerRelink(folders, load);

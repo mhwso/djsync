@@ -21,6 +21,7 @@ from __future__ import annotations
 from ..context import AppContext
 from .base import ApiArea, ApiError
 from .folders import FoldersApi
+from .review import ReviewApi
 from .relink import RelinkApi
 from .settings import SettingsApi
 from .updates import UpdatesApi
@@ -32,6 +33,7 @@ class Api:
     def __init__(self, ctx: AppContext):
         self._ctx = ctx
         self.folders = FoldersApi(ctx)
+        self.review = ReviewApi(ctx)
         self.relink = RelinkApi(ctx)
         self.settings = SettingsApi(ctx)
         self.updates = UpdatesApi(ctx)
