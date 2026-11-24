@@ -52,3 +52,9 @@ _Avoid_: Prüfung, Kontrolle
 
 **Startstelle**:
 Die feste Position im Track, an der das Anhören beginnt.
+
+**Sprungweite**:
+Die Sekunden, um die beim Anhören per Taste vorgesprungen wird.
+
+**Relink**:
+Das Verknüpfen eines verschobenen oder umbenannten Ordners mit seinem neuen Pfad. Playlist und Zuordnungen bleiben erhalten.

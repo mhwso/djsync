@@ -172,6 +172,26 @@ class Database:
             (folder, name, playlist_id, now_iso()),
         )
 
+    def add_folder(self, folder: str, name: str) -> bool:
+        """Legt einen Ordner ohne Playlist an. False, wenn es den Ordner schon gibt."""
+        cur = self.conn.execute(
+            "INSERT OR IGNORE INTO folders (folder, name, playlist_id, created_at) VALUES (?, ?, NULL, ?)",
+            (folder, name, now_iso()),
+        )
+        return cur.rowcount > 0
+
+    def rename_folder(self, folder: str, name: str) -> None:
+        """Ändert den gespeicherten Playlist-Namen des Ordners."""
+        self.conn.execute("UPDATE folders SET name = ? WHERE folder = ?", (name, folder))
+
+    def remove_folder(self, folder: str) -> None:
+        """Entfernt den Ordner samt Liste der verwalteten Tracks seiner Playlist.
+        Zuordnungen und eingelesene Dateien bleiben: sie gelten unabhängig vom Ordner."""
+        row = self.get_playlist(folder)
+        if row and row["playlist_id"]:
+            self.conn.execute("DELETE FROM managed_tracks WHERE playlist_id = ?", (row["playlist_id"],))
+        self.conn.execute("DELETE FROM folders WHERE folder = ?", (folder,))
+
     def mark_synced(self, folder: str) -> None:
         self.conn.execute("UPDATE folders SET last_sync = ? WHERE folder = ?", (now_iso(), folder))
 

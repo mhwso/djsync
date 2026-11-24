@@ -7,6 +7,7 @@
 
 import { api } from "./api.js";
 import { h } from "./dom.js";
+import { showUpdateNotice } from "./update.js";
 import { views, DEFAULT_VIEW } from "./views/index.js";
 
 const root = document.getElementById("view");
@@ -48,3 +49,4 @@ api("setup.status")
     if (status.needed && parseHash().name !== "setup") navigate("setup");
   })
   .catch((err) => console.error(err));
+showUpdateNotice(); // läuft nebenher, blockiert den Start nicht

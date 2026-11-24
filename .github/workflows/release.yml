@@ -1,6 +1,7 @@
 name: Windows-Release
 
-# Ein Tag wie v0.2.0 baut djsync.exe und hängt sie an ein GitHub-Release.
+# Ein Tag wie v0.3.0 baut den Windows-Installer (djsync-setup-<version>.exe) und hängt ihn an
+# ein GitHub-Release. Manuell gestartet liegt der Installer nur als Artefakt am Lauf.
 on:
   push:
     tags: ["v*"]
@@ -14,6 +15,9 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write  # nur zum Anlegen des Releases
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -26,20 +30,55 @@ jobs:
       - name: Tests
         run: |
           python -m pip install --quiet . pytest
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           python -m pytest -q
 
-      - name: djsync.exe bauen
-        shell: pwsh
-        run: .\scripts\build_exe.ps1
+      - name: Version bestimmen
+        id: version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $version = python -c "import djsync; print(djsync.__version__)"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # Die Update-Prüfung vergleicht das Release-Tag mit djsync.__version__ – beide müssen passen
+          if ($env:REF_TYPE -eq "tag" -and $env:REF_NAME -ne "v$version") {
+            Write-Error "Tag $env:REF_NAME passt nicht zu djsync.__version__ ($version)"
+            exit 1
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: App bündeln (PyInstaller)
+        run: |
+          python -m pip install --quiet "pyinstaller>=6"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python -m PyInstaller --noconfirm --clean --log-level WARN packaging\djsync.spec
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          foreach ($f in "dist\djsync\djsync.exe", "dist\djsync\_internal\djsync\gui\static\index.html") {
+            if (-not (Test-Path $f)) { Write-Error "Fehlt im Bundle: $f"; exit 1 }
+          }
+
+      - name: Installer bauen (Inno Setup)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+          & $iscc /Q "/DAppVersion=$env:VERSION" packaging\djsync.iss
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          Get-Item "dist\djsync-setup-$env:VERSION.exe"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: djsync-windows
-          path: dist/djsync.exe
+          name: djsync-setup
+          path: dist/djsync-setup-*.exe
 
       - name: Release veröffentlichen
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
-          files: dist/djsync.exe
+          files: dist/djsync-setup-*.exe
           generate_release_notes: true

@@ -4,10 +4,12 @@
 
 import folders from "./folders.js";
 import setup from "./setup.js";
+import settings from "./settings.js";
 
 export const DEFAULT_VIEW = "folders";
 
 export const views = {
   folders,
   setup,
+  settings,
 };

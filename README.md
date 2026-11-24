@@ -36,15 +36,24 @@ verschwinden daraus, die neuesten Downloads stehen oben.
 
 <a id="installation"></a>
 
-## 🪟 Windows: djsync.exe (ohne Installation)
+## 🪟 Windows: Installer
 
 Für alle, die kein Terminal nutzen wollen – siehe [ANLEITUNG.md](ANLEITUNG.md) zum Weitergeben.
 
-1. `djsync.exe` aus dem neuesten [Release](../../releases/latest) herunterladen.
-2. Doppelklick → djsync führt durch die Einrichtung (eigene Spotify-App, Anmeldung).
-3. Musikordner ins Fenster ziehen, Enter – oder den Ordner direkt auf `djsync.exe` ziehen.
+1. `djsync-setup-<version>.exe` aus dem neuesten [Release](../../releases/latest) herunterladen
+   und starten. Installiert wird nur für den eigenen Benutzer, ohne Adminrechte, mit
+   Startmenü-Eintrag. Der Installer ist nicht signiert, Windows warnt deshalb beim ersten Start
+   (**Weitere Informationen** → **Trotzdem ausführen**).
+2. djsync aus dem Startmenü öffnen → das Programm führt durch die Einrichtung.
+3. **Updates:** Bei jedem Start prüft djsync, ob es ein neueres Release gibt, und zeigt dann
+   einen Hinweis mit Link. Zum Aktualisieren einfach den neuen Installer ausführen.
+4. **Deinstallieren** über die Windows-Einstellungen („Apps“). Dabei fragt djsync, ob auch die
+   Daten unter `%APPDATA%\djsync` gelöscht werden sollen.
 
-Alle Befehle unten funktionieren auch mit der .exe (`djsync.exe sync "D:\Musik\House"`).
+Wer bisher die portable `djsync.exe` genutzt hat: Einrichtung, Anmeldung und Zuordnungen liegen
+unter `%APPDATA%\djsync` und werden übernommen. Die alte `djsync.exe` kann gelöscht werden.
+Unter Windows gibt es nur noch die GUI, die Kommandozeile ist für Linux/WSL gedacht
+(siehe [ADR 0002](docs/adr/0002-cli-nur-unter-linux-wsl.md)).
 
 ## 🐧 Einrichtung (Entwicklung, WSL/Linux)
 
@@ -112,11 +121,22 @@ uv run pytest
 
 ### Windows-Release
 
-Ein Versions-Tag (`v0.2.0` usw.) baut per GitHub Actions `djsync.exe` und hängt sie an ein
-Release. Der Workflow lässt sich auch manuell unter „Actions“ starten; die .exe liegt dann
+Ein Versions-Tag (`v0.3.0` usw.) baut per GitHub Actions den Installer
+`djsync-setup-<version>.exe` und hängt ihn an ein Release. Das Tag muss zu `__version__` in
+`src/djsync/__init__.py` (und `version` in `pyproject.toml`) passen, sonst bricht der Workflow
+ab (die Update-Prüfung vergleicht beides). Der Workflow lässt sich auch manuell unter „Actions“ starten; der Installer liegt dann
 als Artefakt am Lauf.
 
-Lokal unter Windows (PowerShell, Python 3.11+): `.\scripts\build_exe.ps1` → `dist\djsync.exe`.
+Lokal unter Windows (PowerShell, Python 3.11+, [Inno Setup 6](https://jrsoftware.org/isinfo.php)):
+
+```powershell
+python -m pip install . "pyinstaller>=6"
+python -m PyInstaller --noconfirm --clean packaging\djsync.spec   # → dist\djsync\djsync.exe
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /DAppVersion=0.3.0 packaging\djsync.iss
+# → dist\djsync-setup-0.3.0.exe
+```
+
+Die GUI lässt sich während der Entwicklung auch direkt starten: `uv run djsync-gui`.
 
 ## 📄 Lizenz
 
