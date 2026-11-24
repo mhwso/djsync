@@ -24,15 +24,20 @@ MIX_KEYWORDS = frozenset(
 NEUTRAL_MIXES = frozenset({"", "original", "album"})
 # Füllwörter, die beim Vergleich von Mix-Namen ignoriert werden
 _MIX_FILLER = frozenset({"mix", "version"})
+_MIX_SYNONYMS = {"rmx": "remix"}
 
 ARTIST_MATCH_THRESHOLD = 0.85
 
 _BRACKETS_RE = re.compile(r"[\(\[]([^\(\)\[\]]*)[\)\]]")
 _FEAT_PREFIX_RE = re.compile(r"^(?:feat|ft|featuring)\b\.?\s*", re.I)
 _FEAT_INLINE_RE = re.compile(r"\s+(?:feat|ft|featuring)\b\.?\s+(.+)$", re.I)
-_DASH_SUFFIX_RE = re.compile(r"\s+[-–—]\s+([^-–—]+)$")
+_DASH_SUFFIX_RE = re.compile(r"\s+[-–—]\s+((?:(?!\s[-–—]\s).)+)$")
 _ARTIST_SPLIT_RE = re.compile(
-    r"\s*(?:,|;|/|&|\+|\band\b|\bx\b|\bvs\b\.?|\bfeat\b\.?|\bft\b\.?|\bfeaturing\b|\bwith\b)\s*",
+    r"\s*(?:,|;|/|&|\+|\s:\s|\band\b|\bx\b|\bvs\b\.?|\bfeat\b\.?|\bft\b\.?|\bfeaturing\b|\bwith\b)\s*",
+    re.I,
+)
+_RAW_ARTIST_SPLIT_RE = re.compile(
+    r"\s*[,;/]\s*|\s+(?:&|\+|:|and|x|vs\.?|feat\.?|ft\.?|featuring|with)\s+",
     re.I,
 )
 
@@ -69,6 +74,7 @@ def normalize_mix(mix: str) -> str:
     words = normalize_text(mix).split()
     if "remaster" in words or "remastered" in words:
         return ""
+    words = [_MIX_SYNONYMS.get(w, w) for w in words]
     n = " ".join(w for w in words if w not in _MIX_FILLER)
     return "" if n in NEUTRAL_MIXES else n
 
@@ -80,8 +86,17 @@ class ParsedTitle:
     featured: list[str] = field(default_factory=list)
 
 
-def parse_title(title: str) -> ParsedTitle:
-    """Zerlegt einen Titel in Basistitel, Mix-Angabe und Featured-Artists.
+@dataclass(frozen=True)
+class RawTitle:
+    """Wie ParsedTitle, aber in Original-Schreibweise (für Suchanfragen)."""
+
+    base: str
+    mix: str
+    featured: list[str] = field(default_factory=list)
+
+
+def split_title(title: str) -> RawTitle:
+    """Zerlegt einen Titel in Basistitel, Mix-Angabe und Featured-Artists – ohne Normalisierung.
 
     Versteht sowohl Beatport-Stil „Track (Extended Mix)“ als auch
     Spotify-Stil „Track - Extended Mix“.
@@ -93,10 +108,11 @@ def parse_title(title: str) -> ParsedTitle:
         nonlocal mix
         content = m.group(1).strip()
         if _FEAT_PREFIX_RE.match(content):
-            featured.extend(split_artists(_FEAT_PREFIX_RE.sub("", content)))
+            featured.append(_FEAT_PREFIX_RE.sub("", content).strip())
             return " "
         if is_mix(content):
-            mix = content
+            if not normalize_mix(mix):
+                mix = content
             return " "
         return m.group(0)
 
@@ -104,15 +120,29 @@ def parse_title(title: str) -> ParsedTitle:
 
     m = _DASH_SUFFIX_RE.search(remaining)
     if m and not mix and is_mix(m.group(1)):
-        mix = m.group(1)
+        mix = m.group(1).strip()
         remaining = remaining[: m.start()]
 
     m = _FEAT_INLINE_RE.search(remaining)
     if m:
-        featured.extend(split_artists(m.group(1)))
+        featured.append(m.group(1).strip())
         remaining = remaining[: m.start()]
 
-    return ParsedTitle(normalize_text(remaining), normalize_mix(mix), _dedupe(featured))
+    return RawTitle(" ".join(remaining.split()), mix, featured)
+
+
+def parse_title(title: str) -> ParsedTitle:
+    """Wie split_title, aber normalisiert – für Vergleiche und Fingerprints."""
+    raw = split_title(title)
+    featured = [a for f in raw.featured for a in split_artists(f)]
+    return ParsedTitle(normalize_text(raw.base), normalize_mix(raw.mix), _dedupe(featured))
+
+
+def split_artists_raw(s: str) -> list[str]:
+    """Wie split_artists, aber in Original-Schreibweise. Trennt an „&“ & Co. nur,
+    wenn Leerzeichen drumherum stehen – damit Namen wie „&ME“ erhalten bleiben."""
+    parts = (p.strip() for p in _RAW_ARTIST_SPLIT_RE.split(s or ""))
+    return _dedupe(p for p in parts if p)
 
 
 def fingerprint(f: LocalFile) -> str | None:
@@ -168,8 +198,8 @@ def score_candidate(f: LocalFile, c: Candidate, duration_tolerance_ms: int = 300
 
     lp = parse_title(f.title or "")
     cp = parse_title(c.name)
-    la = _dedupe(split_artists(f.artist or "") + lp.featured)
-    ca = _dedupe([n for a in c.artists for n in split_artists(a)] + cp.featured)
+    la = _dedupe(_comparable_artists([f.artist]) + lp.featured)
+    ca = _dedupe(_comparable_artists(c.artists) + cp.featured)
 
     title = _ratio(lp.base, cp.base)
     artist = max(_coverage(la, ca), _coverage(ca, la))
@@ -203,13 +233,22 @@ def choose_best(
         key=lambda cs: (cs[1].exact, cs[1].value),
         reverse=True,
     )
-    if ranked:
-        best, s = ranked[0]
-        if s.exact:
-            return MatchResult(EXACT, best.id, ranked)
+    if ranked and ranked[0][1].exact:
+        return MatchResult(EXACT, ranked[0][0].id, ranked)
+    # bester Kandidat, der die Mindestanforderungen erfüllt – nicht zwingend der mit dem höchsten Score
+    for c, s in ranked:
         if s.value >= min_score and s.title >= 0.75 and s.artist >= 0.5:
-            return MatchResult(APPROXIMATE, best.id, ranked)
+            return MatchResult(APPROXIMATE, c.id, ranked)
     return MatchResult(NOT_FOUND, None, ranked)
+
+
+# Beatport-Unterscheidungskürzel wie „SLV (DE)“ oder „Flex (UK)“ – Spotify führt den Artist ohne
+_COUNTRY_TAG_RE = re.compile(r"\s*\((?:[A-Z]{2}|USA)\)")
+
+
+def _comparable_artists(raw_names) -> list[str]:
+    """Normalisierte Artist-Namen für den Vergleich, ohne Länderkürzel."""
+    return _dedupe(n for raw in raw_names for n in split_artists(_COUNTRY_TAG_RE.sub("", raw or "")))
 
 
 def _dedupe(items) -> list:

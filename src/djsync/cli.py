@@ -13,7 +13,7 @@ from .plan import Plan
 from .review import pending_reviews, run_review
 from .scanner import scan_folder
 from .spotify import SpotifyClient, SpotifyError
-from .sync import build_plan, description_text, match_files, playlist_files, summarize
+from .sync import build_plan, description_text, match_files, playlist_files, playlist_name, summarize
 
 MAX_LISTED = 20
 
@@ -120,7 +120,7 @@ def cmd_sync(args) -> None:
             "Abbruch, um die Playlist nicht versehentlich zu leeren."
         )
 
-    match_files(files, db, client, cfg)
+    match_files(files, db, client, cfg, retry=args.retry)
 
     pending = pending_reviews(files, db)
     interactive = sys.stdin.isatty() and not (args.yes or args.dry_run or args.no_review)
@@ -137,7 +137,7 @@ def cmd_sync(args) -> None:
 
     plan = build_plan(files, db, current, playlist_id)
     labels = {sid: os.path.basename(f.path) for f, sid in playlist_files(files, db)}
-    new_name = (args.name or os.path.basename(folder)) if playlist_id is None else None
+    new_name = playlist_name(args.name or os.path.basename(folder)) if playlist_id is None else None
     print_plan(plan, labels, new_name)
 
     if args.dry_run:
@@ -154,7 +154,8 @@ def cmd_sync(args) -> None:
         db.save_playlist(folder, playlist_id, new_name)
         db.commit()
     else:
-        rename = args.name if args.name and args.name != (playlist or {}).get("name") else None
+        wanted = playlist_name(args.name) if args.name else None
+        rename = wanted if wanted and wanted != (playlist or {}).get("name") else None
         client.update_playlist(playlist_id, name=rename, description=description_text())
 
     if plan.has_changes:
@@ -240,6 +241,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--yes", "-y", action="store_true", help="ohne Rückfrage übernehmen, kein Review")
     s.add_argument("--dry-run", "-n", action="store_true", help="nur anzeigen, nichts ändern")
     s.add_argument("--no-review", action="store_true", help="Review überspringen")
+    s.add_argument(
+        "--retry",
+        action="store_true",
+        help="nicht gefundene und ungefähre Treffer sofort neu suchen (manuelle bleiben)",
+    )
     s.set_defaults(func=cmd_sync)
 
     s = sub.add_parser("review", help="ungefähre und fehlende Treffer prüfen")

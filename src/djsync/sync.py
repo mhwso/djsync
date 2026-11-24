@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 from .config import Config
 from .db import Database
-from .matching import choose_best, parse_title, split_artists
+from .matching import choose_best, normalize_mix, split_artists_raw, split_title
 from .models import (
     APPROXIMATE,
     EXACT,
@@ -38,25 +38,50 @@ def search_candidates(client: SpotifyClient, f: LocalFile, cfg: Config) -> list[
     if f.isrc and run(f"isrc:{f.isrc.strip()}"):
         return list(found.values())
 
-    p = parse_title(f.title or "")
-    artists = split_artists(f.artist or "") + p.featured
-    base = _clean(p.base)
+    # Suchanfragen in Original-Schreibweise – normalisiert würde z. B. aus „&ME“ nur „me“
+    t = split_title(f.title or "")
+    base = _clean(t.base)
     if not base:
         return list(found.values())
+    artists = split_artists_raw(f.artist or "") + t.featured
     primary = _clean(artists[0]) if artists else ""
+    mix = _clean(t.mix) if normalize_mix(t.mix) else ""  # „Original Mix“ hilft der Suche nicht
 
-    if primary and run(f'track:"{base}" artist:"{primary}"'):
-        return list(found.values())
-    run(" ".join(x for x in (primary, base, _clean(p.mix)) if x))
+    queries = []
+    if primary:
+        queries.append(f'track:"{base}" artist:"{primary}"')
+    queries.append(" ".join(x for x in (primary, base) if x))
+    if mix:
+        queries.append(" ".join(x for x in (primary, base, mix) if x))
+    for q in queries:
+        if run(q):
+            break
     return list(found.values())
+
+
+PLAYLIST_PREFIX = "DJSYNC - "
+
+
+def playlist_name(name: str) -> str:
+    """„2026“ → „DJSYNC - 2026“; ein bereits vorhandenes Präfix wird nicht verdoppelt."""
+    name = name.strip()
+    if name.upper().startswith(PLAYLIST_PREFIX.strip().upper()):
+        return name
+    return PLAYLIST_PREFIX + name
 
 
 def _clean(s: str) -> str:
     return s.replace('"', " ").strip()
 
 
-def needs_search(record: MatchRecord | None, cfg: Config) -> bool:
+# per `sync --retry` sofort neu suchbar; manuelle Entscheidungen bleiben unangetastet
+RETRYABLE = frozenset({NOT_FOUND, APPROXIMATE})
+
+
+def needs_search(record: MatchRecord | None, cfg: Config, retry: bool = False) -> bool:
     if record is None:
+        return True
+    if retry and record.status in RETRYABLE:
         return True
     if record.status in SETTLED:
         return False
@@ -69,11 +94,15 @@ def needs_search(record: MatchRecord | None, cfg: Config) -> bool:
 
 
 def match_files(
-    files: list[tuple[LocalFile, str | None]], db: Database, client: SpotifyClient, cfg: Config
+    files: list[tuple[LocalFile, str | None]],
+    db: Database,
+    client: SpotifyClient,
+    cfg: Config,
+    retry: bool = False,
 ) -> None:
     todo: dict[str, LocalFile] = {}
     for f, fp in files:
-        if fp and fp not in todo and needs_search(db.get_match(fp), cfg):
+        if fp and fp not in todo and needs_search(db.get_match(fp), cfg, retry):
             todo[fp] = f
     if not todo:
         return

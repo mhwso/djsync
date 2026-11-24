@@ -28,6 +28,7 @@ verschwinden daraus, die neuesten Downloads stehen oben.
 djsync sync "D:\Musik\Techno 2026-11"      # Windows-Pfade werden nach /mnt/d/… übersetzt
 djsync sync /mnt/d/Musik/House --name "House Promos"
 djsync sync /mnt/d/Musik/House --dry-run   # nur anzeigen, was sich ändern würde
+djsync sync /mnt/d/Musik/House --retry     # nicht gefundene/ungefähre Treffer sofort neu suchen
 djsync review [ordner]                      # ungefähre/fehlende Treffer prüfen
 djsync status [ordner]                      # Übersicht bzw. Details
 djsync relink /mnt/d/Alt /mnt/d/Neu         # nach Umbenennen/Verschieben des Ordners
@@ -43,7 +44,7 @@ Ablauf von `sync`: Ordner rekursiv scannen → auf Spotify suchen (ISRC, dann Ar
 | ✓ exakt | Artist, Titel, Mix und Dauer (±3 s) stimmen; „Original Mix“ = ohne Angabe |
 | ~ ungefähr | andere Version gefunden (z. B. Radio Edit statt Extended) – wird hinzugefügt, im Review markiert |
 | ✎ manuell | von dir im Review gewählt oder per Link gesetzt |
-| ✗ nicht gefunden | wird nach `retry_missing_days` erneut gesucht |
+| ✗ nicht gefunden | wird nach `retry_missing_days` (oder mit `--retry`) erneut gesucht |
 | ⊘ nicht auf Spotify | von dir markiert, wird nie wieder gesucht |
 
 Zuordnungen hängen am Track (ISRC bzw. Artist+Titel+Mix), nicht am Dateinamen –
@@ -53,7 +54,7 @@ umbenannte Dateien und Duplikate in anderen Ordnern übernehmen sie automatisch.
 
 - djsync entfernt nur Tracks, die es selbst hinzugefügt hat. Von Hand ergänzte Tracks bleiben (am Ende der Playlist).
 - Ist der Ordner nicht erreichbar oder leer, die Playlist aber gefüllt, bricht djsync ab.
-- Neue Playlists sind privat.
+- Neue Playlists sind privat und heißen „DJSYNC - <Ordnername>“ (bzw. „DJSYNC - <--name>“).
 
 ## Daten
 
