@@ -5,9 +5,10 @@ from __future__ import annotations
 import os
 import re
 
+from . import ui
 from .db import Database
 from .matching import score_candidate
-from .models import APPROXIMATE, MANUAL, NOT_ON_SPOTIFY, REVIEW_STATUSES, Candidate, LocalFile
+from .models import MANUAL, NOT_ON_SPOTIFY, REVIEW_STATUSES, Candidate, LocalFile
 from .spotify import SpotifyClient, SpotifyError
 
 _LINK_RE = re.compile(r"(?:open\.spotify\.com/(?:intl-[a-z]+/)?track/|spotify:track:)([A-Za-z0-9]{22})")
@@ -47,11 +48,11 @@ def pending_reviews(files: list[tuple[LocalFile, str | None]], db: Database) -> 
 
 
 def _ask(prompt: str) -> str | None:
-    """input(), aber None statt EOFError, wenn keine Eingabe mehr kommt."""
+    """Eingabe, aber None statt EOFError, wenn keine Eingabe mehr kommt."""
     try:
-        return input(prompt)
+        return ui.ask(prompt)
     except EOFError:
-        print()
+        ui.info("")
         return None
 
 
@@ -60,26 +61,28 @@ def run_review(
 ) -> int:
     """Gibt die Anzahl geänderter Zuordnungen zurück."""
     if not pending:
-        print("Nichts zu prüfen.")
+        ui.success("Nichts zu prüfen.")
         return 0
-    print(f"\nReview: {len(pending)} Tracks prüfen.\n")
+    ui.review_header(len(pending))
     changed = 0
     for i, (f, fp) in enumerate(pending, 1):
         record = db.get_match(fp)
         if record is None:
             continue
-        label = "~ ungefähr" if record.status == APPROXIMATE else "✗ nicht gefunden"
-        print(f"[{i}/{len(pending)}] {label}")
-        print(f"  Datei: {os.path.basename(f.path)}")
-        print(f"  Tags:  {f.artist or '?'} – {f.title or '?'}  {fmt_duration(f.duration_ms).strip()}")
-        for n, c in enumerate(record.candidates, 1):
+        rows = []
+        for c in record.candidates:
             s = score_candidate(f, c, duration_tolerance_ms)
-            marker = "  ← aktuell" if c.id == record.spotify_id else ""
-            print(f"   {n}) {fmt_candidate(c)}  [{s.value:.2f}]{marker}")
-        options = f"1-{len(record.candidates)} / " if record.candidates else ""
+            rows.append((", ".join(c.artists), c.name, fmt_duration(c.duration_ms).strip(), s.value,
+                         s.duration_ok, c.id == record.spotify_id))
+        ui.review_track(i, len(pending), record.status, os.path.basename(f.path),
+                        f"{f.artist or '?'} – {f.title or '?'}", fmt_duration(f.duration_ms).strip(), rows)
+        options = f"[accent]1-{len(record.candidates)}[/] wählen · " if record.candidates else ""
 
         while True:
-            choice = _ask(f"  Auswahl [{options}l=Link / n=nicht auf Spotify / s=überspringen / q=beenden]: ")
+            choice = _ask(
+                f"{options}[accent]l[/] Link · [accent]n[/] nicht auf Spotify · "
+                "[accent]s[/] überspringen · [accent]q[/] beenden: "
+            )
             if choice is None:  # Eingabe beendet (Strg+D) – wie „q“
                 return changed
             choice = choice.strip().lower()
@@ -93,19 +96,19 @@ def run_review(
                 changed += 1
                 break
             if choice == "l":
-                link = _ask("  Spotify-Link: ")
+                link = _ask("Spotify-Link: ")
                 if link is None:
                     return changed
                 track_id = parse_track_link(link)
                 if not track_id:
-                    print("  Kein gültiger Track-Link.")
+                    ui.warn("Kein gültiger Track-Link.")
                     continue
                 try:
                     c = client.get_track(track_id)
                 except SpotifyError as e:
-                    print(f"  Track nicht abrufbar: {e}")
+                    ui.warn(f"Track nicht abrufbar: {e}")
                     continue
-                print(f"  → {fmt_candidate(c)}")
+                ui.success(fmt_candidate(c))
                 candidates = [c] + [x for x in record.candidates if x.id != c.id]
                 db.save_match(fp, MANUAL, c.id, candidates)
                 db.commit()
@@ -117,6 +120,5 @@ def run_review(
                 db.commit()
                 changed += 1
                 break
-            print("  Ungültige Eingabe.")
-        print()
+            ui.warn("Ungültige Eingabe.")
     return changed

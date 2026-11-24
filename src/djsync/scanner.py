@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
-import sys
 from pathlib import Path
 
+from . import ui
 from .db import Database
 from .filenames import parse_filename, to_internal_path
 from .matching import fingerprint
@@ -85,25 +85,27 @@ def load_file(path: str, st: os.stat_result) -> LocalFile:
 def scan_folder(folder: str, db: Database, extensions) -> list[tuple[LocalFile, str | None]]:
     """Gibt (Datei, Fingerprint) für alle Audiodateien zurück und hält den DB-Cache aktuell."""
     cached = db.files_under(folder)
-    paths = iter_audio_files(folder, extensions)
+    with ui.spinner("Suche Audiodateien …"):
+        paths = iter_audio_files(folder, extensions)
     result = []
     fresh = 0
-    for i, path in enumerate(paths, 1):
-        _progress(f"Scanne Dateien … {i}/{len(paths)}")
-        try:
-            st = os.stat(path)
-        except OSError:
-            continue
-        hit = cached.get(path)
-        if hit and hit[0].size == st.st_size and hit[0].mtime == st.st_mtime:
-            result.append(hit)
-            continue
-        f = load_file(path, st)
-        fp = fingerprint(f)
-        db.upsert_file(f, fp)
-        result.append((f, fp))
-        fresh += 1
-    _progress_done(f"{len(paths)} Audiodateien gefunden ({fresh} neu eingelesen).")
+    with ui.progress("Lese Dateien", len(paths)) as advance:
+        for path in paths:
+            advance()
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            hit = cached.get(path)
+            if hit and hit[0].size == st.st_size and hit[0].mtime == st.st_mtime:
+                result.append(hit)
+                continue
+            f = load_file(path, st)
+            fp = fingerprint(f)
+            db.upsert_file(f, fp)
+            result.append((f, fp))
+            fresh += 1
+    ui.success(f"{len(paths)} Audiodateien gefunden [muted]({fresh} neu eingelesen)[/]")
 
     gone = set(cached) - set(paths)
     if gone:
@@ -111,13 +113,3 @@ def scan_folder(folder: str, db: Database, extensions) -> list[tuple[LocalFile, 
     db.commit()
     return result
 
-
-def _progress(msg: str) -> None:
-    if sys.stderr.isatty():
-        print(f"\r{msg}", end="", file=sys.stderr, flush=True)
-
-
-def _progress_done(msg: str) -> None:
-    if sys.stderr.isatty():
-        print("\r\033[K", end="", file=sys.stderr)
-    print(msg)
