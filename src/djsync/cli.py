@@ -13,7 +13,7 @@ from .db import Database
 from .filenames import normalize_folder
 from .models import APPROXIMATE, NOT_FOUND, NOT_ON_SPOTIFY, LocalFile
 from .plan import Plan
-from .relink import RelinkError, relink_folder
+from .relink import RelinkError, UnknownFolderError, relink_folder
 from .review import pending_reviews, run_review
 from .spotify import SpotifyClient, SpotifyError
 from .sync import summarize
@@ -171,7 +171,7 @@ def cmd_sync(args) -> None:
 
 
 def _review_scope(db: Database, folder_arg: str | None) -> list[tuple[LocalFile, str | None]]:
-    folders = [resolve_folder(folder_arg)] if folder_arg else [r["folder"] for r in db.all_playlists()]
+    folders = [resolve_folder(folder_arg)] if folder_arg else [r["folder"] for r in db.synced_folders()]
     files = []
     for folder in folders:
         files.extend(db.files_under(folder).values())
@@ -197,7 +197,8 @@ def cmd_review(args) -> None:
 
 def cmd_status(args) -> None:
     _, db, _ = setup(need_client=False)
-    rows = db.all_playlists()
+    # Auch Ordner, die in der App aufgenommen, aber noch nie synchronisiert wurden
+    rows = db.all_folders()
     if args.folder:
         folder = resolve_folder(args.folder)
         rows = [r for r in rows if r["folder"] == folder]
@@ -209,11 +210,14 @@ def cmd_status(args) -> None:
     for r in rows:
         files = list(db.files_under(r["folder"]).values())
         groups = summarize(files, db)
-        url = f"https://open.spotify.com/playlist/{r['playlist_id']}"
         ui.info("")
         ui.info(f"[accent]{r['name']}[/]" + ("" if os.path.isdir(r["folder"]) else "  [warn](Ordner nicht erreichbar)[/]"))
         ui.info(f"[muted]{r['folder']}[/]")
-        ui.info(f"[link={url}][muted]{url}[/][/link]")
+        if r["playlist_id"]:
+            url = f"https://open.spotify.com/playlist/{r['playlist_id']}"
+            ui.info(f"[link={url}][muted]{url}[/][/link]")
+        else:
+            ui.info("[muted]Noch keine Playlist – sie entsteht beim ersten Sync.[/]")
         print_summary(groups)
         if args.folder:
             print_files(NOT_FOUND, groups[NOT_FOUND])
@@ -226,6 +230,8 @@ def cmd_relink(args) -> None:
     _, db, _ = setup(need_client=False)
     try:
         moved = relink_folder(db, old, new)
+    except UnknownFolderError:
+        raise Abort(f"Der Ordner {old} ist mit keiner Playlist verknüpft.") from None
     except RelinkError as e:
         raise Abort(str(e)) from None
     ui.success(f"Verknüpfung aktualisiert ({moved} Dateien übernommen). Jetzt [bold]djsync sync \"{new}\"[/] ausführen.")

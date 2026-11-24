@@ -154,18 +154,18 @@ class Database:
 
     # ---- Ordner und Playlists ------------------------------------------------
 
-    def get_playlist(self, folder: str) -> sqlite3.Row | None:
+    def get_folder(self, folder: str) -> sqlite3.Row | None:
         """Der Ordner-Eintrag (folder, name, playlist_id, created_at, last_sync), auch ohne Playlist."""
         return self.conn.execute("SELECT * FROM folders WHERE folder = ?", (folder,)).fetchone()
 
-    def all_playlists(self) -> list[sqlite3.Row]:
+    def synced_folders(self) -> list[sqlite3.Row]:
         """Ordner, deren Playlist schon auf Spotify existiert."""
         return list(self.conn.execute("SELECT * FROM folders WHERE playlist_id IS NOT NULL ORDER BY folder"))
 
     def all_folders(self) -> list[sqlite3.Row]:
         return list(self.conn.execute("SELECT * FROM folders ORDER BY folder"))
 
-    def save_playlist(self, folder: str, playlist_id: str, name: str) -> None:
+    def save_folder_playlist(self, folder: str, playlist_id: str, name: str) -> None:
         self.conn.execute(
             """INSERT INTO folders (folder, name, playlist_id, created_at) VALUES (?, ?, ?, ?)
                ON CONFLICT(folder) DO UPDATE SET name = excluded.name, playlist_id = excluded.playlist_id""",
@@ -187,7 +187,7 @@ class Database:
     def remove_folder(self, folder: str) -> None:
         """Entfernt den Ordner samt Liste der verwalteten Tracks seiner Playlist.
         Zuordnungen und eingelesene Dateien bleiben: sie gelten unabhängig vom Ordner."""
-        row = self.get_playlist(folder)
+        row = self.get_folder(folder)
         if row and row["playlist_id"]:
             self.conn.execute("DELETE FROM managed_tracks WHERE playlist_id = ?", (row["playlist_id"],))
         self.conn.execute("DELETE FROM folders WHERE folder = ?", (folder,))
@@ -205,7 +205,8 @@ class Database:
             (_like_prefix(folder), *sorted(REVIEW_STATUSES)),
         ).fetchone()[0]
 
-    def relink_playlist(self, old_folder: str, new_folder: str) -> bool:
+    def move_folder(self, old_folder: str, new_folder: str) -> bool:
+        """Ändert den Pfad des Ordners (Relink). False, wenn es den alten Ordner nicht gibt."""
         cur = self.conn.execute(
             "UPDATE folders SET folder = ? WHERE folder = ?", (new_folder, old_folder)
         )

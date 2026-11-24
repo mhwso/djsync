@@ -185,9 +185,12 @@ export default {
       try {
         await api("sync.start", folder);
       } catch (err) {
-        // z. B. läuft schon ein Sync: dorthin anbieten
+        // z. B. läuft schon ein Sync: für diesen Ordner dessen Stand zeigen, sonst dorthin anbieten
         const status = await api("sync.status").catch(() => null);
-        if (status && status.folder !== folder && ["running", "ready"].includes(status.state)) {
+        const busy = status && ["running", "ready", "applying"].includes(status.state);
+        if (busy && status.folder === folder) {
+          await refresh();
+        } else if (busy) {
           keys = { Escape: home };
           show(
             h("p", { class: "notice error", role: "alert" }, errorMessage(err)),
@@ -327,6 +330,12 @@ export default {
         );
       } else if (status.state === "failed") {
         fail(status.error, start);
+      } else if (status.state === "applying") {
+        keys = { Escape: home };
+        show(
+          h("p", { class: "muted" }, "Die Änderungen werden gerade übertragen …"),
+          h("div", { class: "sync-actions" }, button("Zum Startbildschirm", home)),
+        );
       }
     }
 

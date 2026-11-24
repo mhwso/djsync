@@ -70,3 +70,12 @@ def test_relink_unknown_folder(api, music):
 
     with pytest.raises(ApiError, match="kein Ordner"):
         api.relink.apply(str(music.root / "Unbekannt"), target)
+
+
+def test_cli_relink_of_unknown_folder_keeps_its_message(run_cli, music, capsys):
+    target = music.folder("Ziel")
+
+    assert run_cli("relink", str(music.root / "Unbekannt"), target) != 0
+
+    out = capsys.readouterr()
+    assert "mit keiner Playlist verknüpft" in out.out + out.err

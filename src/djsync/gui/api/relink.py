@@ -11,7 +11,7 @@ import os
 
 from ...filenames import normalize_folder
 from ...relink import RelinkError, relink_folder
-from .base import ApiArea, ApiError
+from .base import ApiArea, ApiError, choose_folder
 
 
 class RelinkApi(ApiArea):
@@ -35,12 +35,6 @@ class RelinkApi(ApiArea):
         return {"folder": new, "moved": moved}
 
     def choose_folder(self, start: str = "") -> str | None:
-        """Öffnet den Ordner-Dialog des Systems; gibt den gewählten Pfad zurück oder None."""
-        import webview  # nur in der App vorhanden
-
-        window = webview.windows[0] if webview.windows else None
-        if window is None:
-            return None
-        directory = start if start and os.path.isdir(start) else ""
-        result = window.create_file_dialog(webview.FileDialog.FOLDER, directory=directory)
-        return normalize_folder(result[0], wsl=False) if result else None
+        """Öffnet den Ordnerdialog des Systems (beginnt in `start`); gibt den gewählten Pfad
+        zurück (Eingabe für `apply`) oder None bei Abbruch."""
+        return choose_folder(start)

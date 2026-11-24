@@ -168,3 +168,13 @@ def test_unreadable_aiff_is_reported(api, aiff_folder):
 
     with pytest.raises(ApiError, match="lässt sich nicht abspielen"):
         api.player.local(aiff_folder, fp)
+
+
+def test_truncated_aiff_is_reported(api, aiff_folder):
+    fp = fingerprint(api, aiff_folder, "Alpha - Stereo.aiff")
+    source = Path(aiff_folder) / "Alpha - Stereo.aiff"
+    data = source.read_bytes()
+    source.write_bytes(data[: data.index(b"SSND") + 10])  # mitten im Kopf des Sample-Chunks abgeschnitten
+
+    with pytest.raises(ApiError, match="lässt sich nicht abspielen"):
+        api.player.local(aiff_folder, fp)

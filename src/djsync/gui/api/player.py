@@ -10,16 +10,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from ..aiff import AIFF_SUFFIXES, AiffError, cached_wav
-from ..context import AppContext
 from .base import ApiArea, ApiError
-from .review import ReviewApi
+from .review import find_track
 
 
 class PlayerApi(ApiArea):
-    def __init__(self, ctx: AppContext):
-        super().__init__(ctx)
-        self._review = ReviewApi(ctx)  # für die Track-Suche; privat, für JS unsichtbar
-
     def local(self, folder: str, fingerprint: str) -> dict:
         """Abspielbare Adresse der lokalen Datei des Tracks. Rückgabe:
           url        – http://127.0.0.1:…, nur für diese Datei freigegeben
@@ -27,7 +22,7 @@ class PlayerApi(ApiArea):
         Die Startstelle und Sprungweite kommen aus `settings.get`.
         """
         with self._ctx.db() as db:
-            path = Path(self._review._find(db, folder, fingerprint).file.path)
+            path = Path(find_track(db, folder, fingerprint).file.path)
         if not path.is_file():
             raise ApiError(f"Die Datei „{path.name}“ ist nicht (mehr) vorhanden.")
         converted = path.suffix.lower() in AIFF_SUFFIXES

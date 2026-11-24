@@ -14,8 +14,7 @@ from ... import review_core
 from ...db import Database
 from ...matching import score_candidate
 from ...models import DECIDED_STATUSES, REVIEW_STATUSES
-from ...spotify import SpotifyError
-from .base import ApiArea, ApiError
+from .base import ApiArea, ApiError, check_folder
 
 TRACK_URL = "https://open.spotify.com/track/{}"
 
@@ -79,7 +78,7 @@ class ReviewApi(ApiArea):
         if filter not in review_core.FILTERS:
             raise ApiError(f"Unbekannter Filter: {filter}")
         with self._ctx.db() as db:
-            self._check_folder(db, folder)
+            check_folder(db, folder)
             tracks = review_core.review_tracks(db, folder, filter)
             return {
                 "folder": folder,
@@ -98,7 +97,7 @@ class ReviewApi(ApiArea):
         """
         cfg = self._ctx.load_config()
         with self._ctx.db() as db:
-            return _detail(self._find(db, folder, fingerprint), cfg.duration_tolerance_ms)
+            return _detail(find_track(db, folder, fingerprint), cfg.duration_tolerance_ms)
 
     def next_open(self, folder: str, after: str | None = None) -> str | None:
         """Fingerprint des nächsten offenen Tracks nach `after` (Überspringen, Taste s).
@@ -107,7 +106,7 @@ class ReviewApi(ApiArea):
         `after` selbst wird nie geliefert. None, wenn sonst nichts offen ist.
         """
         with self._ctx.db() as db:
-            self._check_folder(db, folder)
+            check_folder(db, folder)
             following = review_core.next_open_track(db, folder, after=after)
             return following.fingerprint if following else None
 
@@ -126,8 +125,8 @@ class ReviewApi(ApiArea):
 
         Ungültiger oder nicht abrufbarer Link → ApiError mit klarer Meldung, nichts geändert.
         """
-        client = self._ctx.spotify()
-        return self._decide(folder, fingerprint, lambda db: review_core.accept_link(db, client, fingerprint, link))
+        with self._spotify("Der Link konnte nicht übernommen werden") as client:
+            return self._decide(folder, fingerprint, lambda db: review_core.accept_link(db, client, fingerprint, link))
 
     def not_on_spotify(self, folder: str, fingerprint: str) -> dict:
         """Markiert den Track als „nicht auf Spotify“ (Taste n); die Vorschläge bleiben erhalten."""
@@ -146,7 +145,7 @@ class ReviewApi(ApiArea):
     def bulk_not_on_spotify(self, folder: str, fingerprints: list[str]) -> dict:
         """Markiert alle ausgewählten Tracks als „nicht auf Spotify“ (schon markierte zählen als übersprungen)."""
         with self._ctx.db() as db:
-            self._check_folder(db, folder)
+            check_folder(db, folder)
             result = review_core.mark_all_not_on_spotify(db, folder, fingerprints)
             return self._bulk_state(db, folder, result)
 
@@ -157,25 +156,20 @@ class ReviewApi(ApiArea):
         „review.search_progress“ mit {done, total}; `cancel_search` bricht ab (cancelled: true),
         bis dahin gesuchte Tracks bleiben gespeichert.
         """
-        cfg = self._ctx.load_config()
-        client = self._ctx.spotify(cfg)
         self._cancel_search.clear()
-        with self._ctx.db() as db:
-            self._check_folder(db, folder)
-            try:
-                result = review_core.search_again(
-                    db,
-                    client,
-                    cfg,
-                    folder,
-                    fingerprints,
-                    on_progress=lambda done, total: self._ctx.events.emit(
-                        "review.search_progress", {"done": done, "total": total}
-                    ),
-                    cancel=self._cancel_search.is_set,
-                )
-            except SpotifyError as e:
-                raise ApiError(f"Spotify-Suche fehlgeschlagen: {e}") from e
+        with self._spotify("Spotify-Suche fehlgeschlagen") as client, self._ctx.db() as db:
+            check_folder(db, folder)
+            result = review_core.search_again(
+                db,
+                client,
+                self._ctx.load_config(),
+                folder,
+                fingerprints,
+                on_progress=lambda done, total: self._ctx.events.emit(
+                    "review.search_progress", {"done": done, "total": total}
+                ),
+                cancel=self._cancel_search.is_set,
+            )
             return self._bulk_state(db, folder, result)
 
     def cancel_search(self) -> None:
@@ -196,7 +190,7 @@ class ReviewApi(ApiArea):
     def _decide(self, folder: str, fingerprint: str, action) -> dict:
         cfg = self._ctx.load_config()
         with self._ctx.db() as db:
-            self._find(db, folder, fingerprint)
+            find_track(db, folder, fingerprint)
             try:
                 action(db)
             except review_core.ReviewError as e:
@@ -206,19 +200,16 @@ class ReviewApi(ApiArea):
     def _state(self, db: Database, folder: str, fingerprint: str, duration_tolerance_ms: int) -> dict:
         following = review_core.next_open_track(db, folder, after=fingerprint)
         return {
-            "track": _detail(self._find(db, folder, fingerprint), duration_tolerance_ms),
+            "track": _detail(find_track(db, folder, fingerprint), duration_tolerance_ms),
             "open_count": db.open_count(folder),
             "next": following.fingerprint if following else None,
         }
 
-    def _find(self, db: Database, folder: str, fingerprint: str) -> review_core.ReviewTrack:
-        self._check_folder(db, folder)
-        t = review_core.find_track(db, folder, fingerprint)
-        if t is None:
-            raise ApiError("Diesen Track gibt es im Ordner nicht (mehr).")
-        return t
 
-    @staticmethod
-    def _check_folder(db: Database, folder: str) -> None:
-        if db.get_playlist(folder) is None:
-            raise ApiError("Diesen Ordner kennt djsync nicht.")
+def find_track(db: Database, folder: str, fingerprint: str) -> review_core.ReviewTrack:
+    """Track des Ordners mit diesem Fingerprint; ApiError, wenn Ordner oder Track unbekannt sind."""
+    check_folder(db, folder)
+    t = review_core.find_track(db, folder, fingerprint)
+    if t is None:
+        raise ApiError("Diesen Track gibt es im Ordner nicht (mehr).")
+    return t
