@@ -91,6 +91,9 @@ class FakeSpotify:
             if len(parts) == 2 and request.method == "PUT":
                 pl.update({k: v for k, v in body.items() if k in ("name", "description")})
                 return httpx.Response(200)
+            if len(parts) == 3 and parts[2] == "followers" and request.method == "DELETE":
+                del self.playlists[parts[1]]  # eigene Playlist entfolgen = löschen
+                return httpx.Response(200)
             if len(parts) == 3 and request.method == "GET":
                 items = [{"item": self._by_id(t)} for t in pl["items"]]
                 return httpx.Response(200, json={"items": items, "next": None})

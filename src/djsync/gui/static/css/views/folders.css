@@ -12,7 +12,7 @@
 
 .folder {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
   gap: 8px 24px;
   padding: 12px 16px;
@@ -45,7 +45,48 @@
 
 .folder.unreachable .folder-main { opacity: 0.65; }
 
+.folder-actions { display: flex; gap: 6px; justify-content: flex-end; }
+
+.drop-hint { text-align: center; margin-top: 12px; }
+
+/* Dialoge der Ordnerverwaltung (js/folder-dialogs.js) */
+
+.dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.dialog::backdrop { background: rgb(0 0 0 / 0.35); }
+
+.dialog-form { display: flex; flex-direction: column; gap: 12px; padding: 20px; }
+.dialog-form h2 { font-size: 17px; font-weight: 600; margin: 0; }
+.dialog-form p { margin: 0; }
+.dialog-path { overflow-wrap: anywhere; }
+.dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+
+.field { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+
+.input {
+  font: inherit;
+  font-weight: normal;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.input:focus { outline: 2px solid var(--focus); outline-offset: -1px; }
+
+.button.small { padding: 3px 10px; font-size: 13px; }
+.button.danger { color: var(--danger); border-color: var(--danger); }
+
 @media (max-width: 640px) {
   .folder { grid-template-columns: minmax(0, 1fr); }
-  .folder-sync, .folder-state { text-align: left; justify-content: flex-start; }
+  .folder-sync, .folder-state, .folder-actions { text-align: left; justify-content: flex-start; }
 }
+.dialog [hidden] { display: none; }
