@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import sys
 from datetime import datetime, timedelta, timezone
 
+from . import ui
 from .config import Config
 from .db import Database
 from .matching import choose_best, normalize_mix, split_artists_raw, split_title
@@ -106,19 +106,17 @@ def match_files(
             todo[fp] = f
     if not todo:
         return
-    for i, (fp, f) in enumerate(todo.items(), 1):
-        if sys.stderr.isatty():
-            print(f"\rSuche auf Spotify … {i}/{len(todo)}", end="", file=sys.stderr, flush=True)
-        candidates = search_candidates(client, f, cfg)
-        result = choose_best(
-            f, candidates, duration_tolerance_ms=cfg.duration_tolerance_ms, min_score=cfg.min_score
-        )
-        top = [c for c, _ in result.ranked[: cfg.review_candidates]]
-        db.save_match(fp, result.status, result.spotify_id, top)
-        db.commit()
-    if sys.stderr.isatty():
-        print("\r\033[K", end="", file=sys.stderr)
-    print(f"{len(todo)} Tracks auf Spotify gesucht.")
+    with ui.progress("Suche auf Spotify", len(todo)) as advance:
+        for fp, f in todo.items():
+            candidates = search_candidates(client, f, cfg)
+            result = choose_best(
+                f, candidates, duration_tolerance_ms=cfg.duration_tolerance_ms, min_score=cfg.min_score
+            )
+            top = [c for c, _ in result.ranked[: cfg.review_candidates]]
+            db.save_match(fp, result.status, result.spotify_id, top)
+            db.commit()
+            advance()
+    ui.success(f"{len(todo)} Tracks auf Spotify gesucht")
 
 
 def summarize(files: list[tuple[LocalFile, str | None]], db: Database) -> dict[str, list[LocalFile]]:

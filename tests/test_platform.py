@@ -5,7 +5,6 @@ import pytest
 from djsync import config
 from djsync.filenames import normalize_folder
 
-
 # ---- Ordnerpfade ------------------------------------------------------------
 
 

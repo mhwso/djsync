@@ -122,12 +122,15 @@ class Auth:
                 "state": state,
             }
         )
-        print("Öffne diese URL im Browser und bestätige den Zugriff:\n")
-        print(f"  {url}\n")
-        open_browser(url)
-        print(f"Warte bis zu {LOGIN_TIMEOUT_S // 60} Minuten auf die Bestätigung …")
+        from . import ui
 
-        callback = self._wait_for_callback()
+        ui.info("Im Browser öffnet sich die Spotify-Anmeldung – bitte den Zugriff bestätigen.")
+        ui.info("[muted]Falls sich nichts öffnet, diese Adresse im Browser aufrufen:[/]")
+        ui.console.print(url, style="muted", soft_wrap=True)  # nicht umbrechen, damit kopierbar
+        open_browser(url)
+
+        with ui.spinner(f"Warte auf die Bestätigung im Browser (bis zu {LOGIN_TIMEOUT_S // 60} Minuten) …"):
+            callback = self._wait_for_callback()
         if callback is None:
             try:
                 callback = input(

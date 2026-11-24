@@ -4,19 +4,25 @@ import argparse
 import os
 import sys
 
+from . import ui
 from .auth import Auth, AuthError
 from .config import DB_FILE, IS_WINDOWS, SCOPES, TOKEN_FILE, ConfigError, load_config
 from .db import Database
 from .filenames import normalize_folder
-from .models import APPROXIMATE, EXACT, MANUAL, NOT_FOUND, NOT_ON_SPOTIFY, LocalFile
+from .models import APPROXIMATE, NOT_FOUND, NOT_ON_SPOTIFY, LocalFile
 from .plan import Plan
 from .review import pending_reviews, run_review
 from .scanner import scan_folder
 from .spotify import SpotifyClient, SpotifyError
-from .sync import build_plan, description_text, match_files, playlist_files, playlist_name, summarize
+from .sync import (
+    build_plan,
+    description_text,
+    match_files,
+    playlist_files,
+    playlist_name,
+    summarize,
+)
 from .wizard import cmd_setup, run_interactive
-
-MAX_LISTED = 20
 
 
 class Abort(Exception):
@@ -42,50 +48,25 @@ def setup(need_client: bool = True):
 
 
 def confirm(prompt: str) -> bool:
-    try:
-        return input(prompt).strip().lower() in ("j", "ja", "y", "yes")
-    except EOFError:
-        print()
-        return False
+    return ui.confirm(prompt)
 
 
 def print_summary(groups: dict[str, list[LocalFile]]) -> None:
-    print(
-        f"✓ exakt {len(groups[EXACT])} · ~ ungefähr {len(groups[APPROXIMATE])} · "
-        f"✎ manuell {len(groups[MANUAL])} · ✗ nicht gefunden {len(groups[NOT_FOUND])} · "
-        f"⊘ nicht auf Spotify {len(groups[NOT_ON_SPOTIFY])}"
-    )
+    ui.summary({status: len(files) for status, files in groups.items()})
 
 
-def print_files(title: str, files: list[LocalFile]) -> None:
-    if not files:
-        return
-    print(f"\n{title} ({len(files)}):")
-    for f in files[:MAX_LISTED]:
-        print(f"  {os.path.basename(f.path)}")
-    if len(files) > MAX_LISTED:
-        print(f"  … und {len(files) - MAX_LISTED} weitere")
+def print_files(status: str, files: list[LocalFile]) -> None:
+    ui.file_list(status, [os.path.basename(f.path) for f in files])
 
 
 def print_plan(plan: Plan, labels: dict[str, str], new_name: str | None) -> None:
-    print()
-    if new_name:
-        print(f"Neue private Playlist „{new_name}“ wird angelegt.")
-    if not plan.has_changes:
-        print("Playlist ist bereits aktuell.")
-        return
-    if plan.added:
-        print(f"+ {len(plan.added)} hinzufügen")
-        for t in plan.added[:MAX_LISTED]:
-            print(f"    + {labels.get(t, t)}")
-        if len(plan.added) > MAX_LISTED:
-            print(f"    … und {len(plan.added) - MAX_LISTED} weitere")
-    if plan.removed:
-        print(f"− {len(plan.removed)} entfernen (Datei nicht mehr im Ordner)")
-        for t in plan.removed[:MAX_LISTED]:
-            print(f"    − {labels.get(t, 'spotify:track:' + t)}")
-    if plan.reordered:
-        print("↕ Reihenfolge wird angepasst (neueste Dateien oben)")
+    ui.plan(
+        new_name,
+        added=[labels.get(t, t) for t in plan.added],
+        removed=[labels.get(t, "spotify:track:" + t) for t in plan.removed],
+        reordered=plan.reordered,
+        has_changes=plan.has_changes,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -99,7 +80,7 @@ def cmd_login(args) -> None:
     auth.login()
     client = SpotifyClient(auth)
     me = client._request("GET", "/me")
-    print(f"Angemeldet als {me.get('display_name') or me.get('id')}.")
+    ui.success(f"Angemeldet als [bold]{me.get('display_name') or me.get('id')}[/].")
 
 
 def cmd_sync(args) -> None:
@@ -108,15 +89,18 @@ def cmd_sync(args) -> None:
         raise Abort(f"Ordner nicht erreichbar: {folder}\nIst das Laufwerk eingebunden?")
     cfg, db, client = setup()
 
+    ui.info(f"[muted]Ordner[/]  {folder}")
     files = scan_folder(folder, db, cfg.extensions)
 
     row = db.get_playlist(folder)
     playlist_id = row["playlist_id"] if row else None
-    playlist = client.get_playlist(playlist_id) if playlist_id else None
-    if playlist_id and playlist is None:
-        print("Hinweis: Die verknüpfte Playlist existiert nicht mehr und wird neu angelegt.")
-        playlist_id = None
-    current = client.playlist_track_ids(playlist_id) if playlist_id else []
+    with ui.spinner("Lade Playlist von Spotify …"):
+        playlist = client.get_playlist(playlist_id) if playlist_id else None
+        if playlist_id and playlist is None:
+            playlist_id = None
+        current = client.playlist_track_ids(playlist_id) if playlist_id else []
+    if row and playlist_id is None:
+        ui.warn("Die verknüpfte Playlist existiert nicht mehr und wird neu angelegt.")
 
     if not files and playlist_id and db.managed_tracks(playlist_id) & set(current):
         raise Abort(
@@ -129,15 +113,15 @@ def cmd_sync(args) -> None:
     pending = pending_reviews(files, db)
     interactive = sys.stdin.isatty() and not (args.yes or args.dry_run or args.no_review)
     if pending and interactive:
-        if confirm(f"\n{len(pending)} Tracks sind ungefähr oder nicht gefunden. Jetzt prüfen? [j/N] "):
+        ui.info("")
+        if confirm(f"{len(pending)} Tracks sind ungefähr oder nicht gefunden. Jetzt prüfen?"):
             run_review(pending, db, client, duration_tolerance_ms=cfg.duration_tolerance_ms)
 
     groups = summarize(files, db)
-    print()
     print_summary(groups)
     if not interactive or not pending:
-        print_files("Nicht gefunden", groups[NOT_FOUND])
-        print_files("Ungefähre Treffer", groups[APPROXIMATE])
+        print_files(NOT_FOUND, groups[NOT_FOUND])
+        print_files(APPROXIMATE, groups[APPROXIMATE])
 
     plan = build_plan(files, db, current, playlist_id)
     labels = {sid: os.path.basename(f.path) for f, sid in playlist_files(files, db)}
@@ -145,28 +129,31 @@ def cmd_sync(args) -> None:
     print_plan(plan, labels, new_name)
 
     if args.dry_run:
-        print("\n(Probelauf – auf Spotify wurde nichts geändert.)")
+        ui.info("\n[muted]Probelauf – auf Spotify wurde nichts geändert.[/]")
         return
 
     needs_write = plan.has_changes or playlist_id is None
-    if needs_write and not args.yes and not confirm("\nÄnderungen auf Spotify übernehmen? [j/N] "):
-        print("Abgebrochen – nichts geändert.")
-        return
+    if needs_write and not args.yes:
+        ui.info("")
+        if not confirm("Änderungen auf Spotify übernehmen?"):
+            ui.info("[muted]Abgebrochen – nichts geändert.[/]")
+            return
 
-    if playlist_id is None:
-        playlist_id = client.create_playlist(new_name, description_text(), public=False)
-        db.save_playlist(folder, playlist_id, new_name)
+    with ui.spinner("Übertrage Änderungen zu Spotify …"):
+        if playlist_id is None:
+            playlist_id = client.create_playlist(new_name, description_text(), public=False)
+            db.save_playlist(folder, playlist_id, new_name)
+            db.commit()
+        else:
+            wanted = playlist_name(args.name) if args.name else None
+            rename = wanted if wanted and wanted != (playlist or {}).get("name") else None
+            client.update_playlist(playlist_id, name=rename, description=description_text())
+
+        if plan.has_changes:
+            client.replace_playlist_items(playlist_id, plan.final)
+        db.set_managed_tracks(playlist_id, plan.desired)
         db.commit()
-    else:
-        wanted = playlist_name(args.name) if args.name else None
-        rename = wanted if wanted and wanted != (playlist or {}).get("name") else None
-        client.update_playlist(playlist_id, name=rename, description=description_text())
-
-    if plan.has_changes:
-        client.replace_playlist_items(playlist_id, plan.final)
-    db.set_managed_tracks(playlist_id, plan.desired)
-    db.commit()
-    print(f"Fertig. Playlist: https://open.spotify.com/playlist/{playlist_id}")
+    ui.playlist_link(playlist_id)
 
 
 def _review_scope(db: Database, folder_arg: str | None) -> list[tuple[LocalFile, str | None]]:
@@ -191,7 +178,7 @@ def cmd_review(args) -> None:
         pending_reviews(files, db), db, client, duration_tolerance_ms=cfg.duration_tolerance_ms
     )
     if changed:
-        print(f"{changed} Zuordnungen geändert. Mit `djsync sync <ordner>` in die Playlist übernehmen.")
+        ui.success(f"{changed} Zuordnungen geändert. Mit [bold]djsync sync <ordner>[/] in die Playlist übernehmen.")
 
 
 def cmd_status(args) -> None:
@@ -203,21 +190,21 @@ def cmd_status(args) -> None:
         if not rows:
             raise Abort(f"Ordner ist mit keiner Playlist verknüpft: {folder}")
     if not rows:
-        print("Noch keine Ordner synchronisiert.")
+        ui.info("[muted]Noch keine Ordner synchronisiert.[/]")
         return
     for r in rows:
         files = list(db.files_under(r["folder"]).values())
         groups = summarize(files, db)
-        reachable = "" if os.path.isdir(r["folder"]) else "  (Ordner nicht erreichbar)"
-        print(f"\n{r['name']}{reachable}")
-        print(f"  {r['folder']}")
-        print(f"  https://open.spotify.com/playlist/{r['playlist_id']}")
-        print("  ", end="")
+        url = f"https://open.spotify.com/playlist/{r['playlist_id']}"
+        ui.info("")
+        ui.info(f"[accent]{r['name']}[/]" + ("" if os.path.isdir(r["folder"]) else "  [warn](Ordner nicht erreichbar)[/]"))
+        ui.info(f"[muted]{r['folder']}[/]")
+        ui.info(f"[link={url}][muted]{url}[/][/link]")
         print_summary(groups)
         if args.folder:
-            print_files("Nicht gefunden", groups[NOT_FOUND])
-            print_files("Ungefähre Treffer", groups[APPROXIMATE])
-            print_files("Nicht auf Spotify", groups[NOT_ON_SPOTIFY])
+            print_files(NOT_FOUND, groups[NOT_FOUND])
+            print_files(APPROXIMATE, groups[APPROXIMATE])
+            print_files(NOT_ON_SPOTIFY, groups[NOT_ON_SPOTIFY])
 
 
 def cmd_relink(args) -> None:
@@ -231,7 +218,7 @@ def cmd_relink(args) -> None:
         raise Abort(f"Der Ordner {old} ist mit keiner Playlist verknüpft.")
     moved = db.move_files(old, new)
     db.commit()
-    print(f"Verknüpfung aktualisiert ({moved} Dateien übernommen). Jetzt `djsync sync \"{new}\"` ausführen.")
+    ui.success(f"Verknüpfung aktualisiert ({moved} Dateien übernommen). Jetzt [bold]djsync sync \"{new}\"[/] ausführen.")
 
 
 # --------------------------------------------------------------------------
@@ -288,10 +275,10 @@ def main(argv=None) -> int:
     try:
         args.func(args)
     except (Abort, ConfigError, AuthError, SpotifyError) as e:
-        print(f"Fehler: {e}", file=sys.stderr)
+        ui.error(str(e))
         return 1
     except KeyboardInterrupt:
-        print("\nAbgebrochen.", file=sys.stderr)
+        ui.err_console.print("\n[muted]Abgebrochen.[/]")
         return 130
     return 0
 
