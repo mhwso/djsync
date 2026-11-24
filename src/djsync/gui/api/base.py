@@ -9,6 +9,7 @@ import httpx
 from ...auth import AuthError
 from ...config import Config, ConfigError
 from ...db import Database
+from ...filenames import normalize_folder
 from ...spotify import SpotifyClient, SpotifyError
 from ..context import AppContext
 
@@ -56,8 +57,23 @@ def spotify_errors(what: str, not_found: str | None = None) -> Iterator[None]:
         raise ApiError(f"{what}: {message}") from e
 
 
+def internal_folder(folder: str) -> str:
+    """Ordnerpfad von der Oberfläche → interne Form (siehe `normalize_folder`).
+
+    Jede API-Methode, die einen Ordner entgegennimmt, bringt ihn hiermit (bzw. über
+    `check_folder`) in die interne Form, bevor er Datenbank oder Dateisystem erreicht – so
+    passt z. B. „C:\\Musik\\Mix“ unter Windows zum gespeicherten „C:/Musik/Mix“.
+    """
+    return normalize_folder(folder)
+
+
 def check_folder(db: Database, folder: str):
-    """Der gespeicherte Eintrag des Ordners; ApiError, wenn djsync ihn nicht kennt."""
+    """Der gespeicherte Eintrag des Ordners; ApiError, wenn djsync ihn nicht kennt.
+
+    `folder` darf in beliebiger Schreibweise kommen; den Pfad in interner Form liefert
+    `row["folder"]` – damit weiterarbeiten.
+    """
+    folder = internal_folder(folder)
     row = db.get_folder(folder)
     if row is None:
         raise ApiError(f"Der Ordner „{folder}“ ist nicht in djsync.")

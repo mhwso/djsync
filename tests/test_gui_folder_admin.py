@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from djsync.filenames import normalize_folder
 from djsync.gui.api import ApiError
 from fake_spotify import track
 
@@ -13,7 +14,7 @@ def test_new_folder_appears_without_playlist(api, music, spotify):
 
     entry = api.folders.add(folder, "Meine Techno-Liste")
 
-    assert entry["folder"] == folder
+    assert entry["folder"] == normalize_folder(folder)
     assert entry["name"] == "Meine Techno-Liste"
     assert entry["playlist_id"] is None
     assert entry["last_sync"] is None
@@ -34,7 +35,7 @@ def test_folder_already_in_djsync_is_rejected(api, music):
 def test_suggestion_for_dialog_or_drop(api, music):
     folder = music.folder("House")
 
-    assert api.folders.suggest(folder + "/") == {"folder": folder, "name": "DJSYNC - House"}
+    assert api.folders.suggest(folder + "/") == {"folder": normalize_folder(folder), "name": "DJSYNC - House"}
 
 
 def test_suggestion_rejects_folder_already_in_djsync(api, music):
@@ -152,7 +153,7 @@ def test_remove_without_login_asks_to_sign_in_again_and_keeps_folder(api, run_cl
     with pytest.raises(ApiError, match="Einrichtung"):
         api.folders.remove(folder, True)
 
-    assert [e["folder"] for e in api.folders.list()] == [folder]
+    assert [e["folder"] for e in api.folders.list()] == [normalize_folder(folder)]
 
 
 def test_spotify_connections_are_closed_after_use(api, run_cli, music, spotify, ctx, monkeypatch):

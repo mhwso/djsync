@@ -78,7 +78,7 @@ class ReviewApi(ApiArea):
         if filter not in review_core.FILTERS:
             raise ApiError(f"Unbekannter Filter: {filter}")
         with self._ctx.db() as db:
-            check_folder(db, folder)
+            folder = check_folder(db, folder)["folder"]
             tracks = review_core.review_tracks(db, folder, filter)
             return {
                 "folder": folder,
@@ -106,7 +106,7 @@ class ReviewApi(ApiArea):
         `after` selbst wird nie geliefert. None, wenn sonst nichts offen ist.
         """
         with self._ctx.db() as db:
-            check_folder(db, folder)
+            folder = check_folder(db, folder)["folder"]
             following = review_core.next_open_track(db, folder, after=after)
             return following.fingerprint if following else None
 
@@ -145,7 +145,7 @@ class ReviewApi(ApiArea):
     def bulk_not_on_spotify(self, folder: str, fingerprints: list[str]) -> dict:
         """Markiert alle ausgewählten Tracks als „nicht auf Spotify“ (schon markierte zählen als übersprungen)."""
         with self._ctx.db() as db:
-            check_folder(db, folder)
+            folder = check_folder(db, folder)["folder"]
             result = review_core.mark_all_not_on_spotify(db, folder, fingerprints)
             return self._bulk_state(db, folder, result)
 
@@ -158,7 +158,7 @@ class ReviewApi(ApiArea):
         """
         self._cancel_search.clear()
         with self._spotify("Spotify-Suche fehlgeschlagen") as client, self._ctx.db() as db:
-            check_folder(db, folder)
+            folder = check_folder(db, folder)["folder"]
             result = review_core.search_again(
                 db,
                 client,
@@ -190,6 +190,7 @@ class ReviewApi(ApiArea):
     def _decide(self, folder: str, fingerprint: str, action) -> dict:
         cfg = self._ctx.load_config()
         with self._ctx.db() as db:
+            folder = check_folder(db, folder)["folder"]
             find_track(db, folder, fingerprint)
             try:
                 action(db)
@@ -208,7 +209,7 @@ class ReviewApi(ApiArea):
 
 def find_track(db: Database, folder: str, fingerprint: str) -> review_core.ReviewTrack:
     """Track des Ordners mit diesem Fingerprint; ApiError, wenn Ordner oder Track unbekannt sind."""
-    check_folder(db, folder)
+    folder = check_folder(db, folder)["folder"]
     t = review_core.find_track(db, folder, fingerprint)
     if t is None:
         raise ApiError("Diesen Track gibt es im Ordner nicht (mehr).")

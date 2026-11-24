@@ -61,7 +61,7 @@ class SyncApi(ApiArea):
         retry: auch kürzlich erfolglos gesuchte Tracks erneut suchen.
         """
         with self._ctx.db() as db:
-            check_folder(db, folder)
+            folder = check_folder(db, folder)["folder"]
         check_reachable(folder)
         with self._lock:
             current = self._session

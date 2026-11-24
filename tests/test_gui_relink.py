@@ -4,6 +4,7 @@ import os
 
 import pytest
 
+from djsync.filenames import normalize_folder
 from djsync.gui.api import ApiError
 from fake_spotify import track
 
@@ -20,13 +21,13 @@ def test_relink_keeps_playlist_and_mappings(api, run_cli, music, spotify):
     old, before = _synced_folder(api, run_cli, music, spotify)
     new = str(music.root / "Verschoben")
     os.rename(old, new)
-    assert api.relink.check(old) == {"folder": old, "reachable": False}
+    assert api.relink.check(old) == {"folder": normalize_folder(old), "reachable": False}
 
     result = api.relink.apply(old, new)
 
-    assert result == {"folder": new, "moved": 3}
+    assert result == {"folder": normalize_folder(new), "moved": 3}
     [after] = api.folders.list()
-    assert after == {**before, "folder": new, "reachable": True}
+    assert after == {**before, "folder": normalize_folder(new), "reachable": True}
     # Zuordnungen bleiben: ein erneuter Sync sucht nichts neu und ändert die Playlist nicht
     searches = len(spotify.searches())
     assert run_cli("sync", new, "--yes") == 0
@@ -62,7 +63,7 @@ def test_cli_relink_uses_same_rules(api, run_cli, music, spotify):
     new = str(music.root / "Verschoben")
     os.rename(old, new)
     assert run_cli("relink", old, new) == 0
-    assert api.folders.list() == [{**before, "folder": new}]
+    assert api.folders.list() == [{**before, "folder": normalize_folder(new)}]
 
 
 def test_relink_unknown_folder(api, music):

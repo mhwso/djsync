@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import os
 
-from ...filenames import normalize_folder
 from ...relink import RelinkError, relink_folder
-from .base import ApiArea, ApiError, choose_folder
+from .base import ApiArea, ApiError, choose_folder, internal_folder
 
 
 class RelinkApi(ApiArea):
     def check(self, folder: str) -> dict:
         """{folder, reachable}: ob der Ordner gerade erreichbar ist (z. B. vor dem Sync)."""
+        folder = internal_folder(folder)
         return {"folder": folder, "reachable": os.path.isdir(folder)}
 
     def apply(self, folder: str, new_folder: str) -> dict:
@@ -24,7 +24,8 @@ class RelinkApi(ApiArea):
 
         Gibt {folder: neuer Pfad in interner Form, moved: Anzahl übernommener Dateien} zurück.
         """
-        new = normalize_folder(new_folder) if new_folder.strip() else ""
+        folder = internal_folder(folder)
+        new = internal_folder(new_folder) if new_folder.strip() else ""
         if not new:
             raise ApiError("Bitte einen neuen Ordner angeben.")
         with self._ctx.db() as db:

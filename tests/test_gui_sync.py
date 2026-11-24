@@ -1,5 +1,6 @@
 """Sync in der GUI: starten, Fortschritt, Zusammenfassung, Änderungsplan, bestätigen/verwerfen."""
 
+import os
 import threading
 import time
 
@@ -8,6 +9,7 @@ import pytest
 from fake_spotify import track
 
 from djsync import review_core
+from djsync.filenames import normalize_folder
 from djsync.gui.api import ApiError
 
 
@@ -47,6 +49,20 @@ def test_first_confirmed_sync_creates_playlist_with_chosen_name(api, music, spot
     assert api.sync.status() is None
 
 
+def test_folder_may_come_in_any_spelling(api, music, spotify, events):
+    folder = _mix_folder(music, spotify)
+    api.folders.add(folder, "DJSYNC - Mix")
+    other = str(music.root / "Mix" / ".." / "Mix") + os.sep
+
+    api.sync.start(other)
+
+    assert wait_for(api, "ready")["folder"] == normalize_folder(folder)
+    assert events.named("sync.ready") == [{"folder": normalize_folder(folder)}]
+    api.sync.confirm()
+    [entry] = api.folders.list()
+    assert entry["folder"] == normalize_folder(folder) and entry["last_sync"]
+
+
 def _mix_folder(music, spotify):
     """Ordner mit je einem exakten, einem ungefähren und einem nicht gefundenen Track."""
     spotify.catalog += [track("id_one", "Alpha", "One"), track("id_two", "Alpha", "Two")]
@@ -61,9 +77,9 @@ def test_progress_and_summary_by_match_status(api, music, spotify, events):
     wait_for(api, "ready")
 
     progress = events.named("sync.progress")
-    assert {"folder": folder, "step": "scan", "done": 3, "total": 3} in progress
-    assert progress[-1] == {"folder": folder, "step": "search", "done": 3, "total": 3}
-    assert events.named("sync.ready") == [{"folder": folder}]
+    assert {"folder": normalize_folder(folder), "step": "scan", "done": 3, "total": 3} in progress
+    assert progress[-1] == {"folder": normalize_folder(folder), "step": "search", "done": 3, "total": 3}
+    assert events.named("sync.ready") == [{"folder": normalize_folder(folder)}]
     summary = api.sync.summary()
     assert summary["found"] == 3
     assert summary["searched"] == 3
@@ -140,7 +156,7 @@ def test_cancel_during_search_leaves_playlist_unchanged(api, run_cli, music, spo
     status = wait_for(api, "cancelled", "ready")
 
     assert status["state"] == "cancelled"
-    assert events.named("sync.cancelled") == [{"folder": folder}]
+    assert events.named("sync.cancelled") == [{"folder": normalize_folder(folder)}]
     assert len(spotify.searches()) == searches + 1  # nach der laufenden Anfrage ist Schluss
     assert spotify.writes()[writes:] == []
     assert spotify.playlists[playlist_id] == before
@@ -177,7 +193,7 @@ def test_second_sync_is_rejected_while_one_is_running(api, music, spotify):
         api.sync.start(second)  # auch ein eingelesener, noch nicht bestätigter Sync zählt
     api.sync.discard()
     api.sync.start(second)
-    assert wait_for(api, "ready")["folder"] == second
+    assert wait_for(api, "ready")["folder"] == normalize_folder(second)
 
 
 def _failing_folder(api, music, spotify):
@@ -206,7 +222,7 @@ def test_spotify_errors_while_searching_are_reported(api, music, spotify, events
     status = wait_for(api, "failed")
 
     assert message in status["error"]
-    assert events.named("sync.failed") == [{"folder": folder, "message": status["error"]}]
+    assert events.named("sync.failed") == [{"folder": normalize_folder(folder), "message": status["error"]}]
 
 
 def test_network_error_is_reported(api, music, spotify):

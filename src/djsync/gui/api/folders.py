@@ -5,10 +5,9 @@ from __future__ import annotations
 import os
 
 from ...db import Database
-from ...filenames import normalize_folder
 from ...spotify import SpotifyError
 from ...sync import playlist_name
-from .base import ApiArea, ApiError, check_folder, choose_folder
+from .base import ApiArea, ApiError, check_folder, choose_folder, internal_folder
 
 PLAYLIST_URL = "https://open.spotify.com/playlist/{}"
 GONE = "Spotify kennt die Playlist nicht mehr."
@@ -48,7 +47,7 @@ class FoldersApi(ApiArea):
     def suggest(self, path: str) -> dict:
         """Prüft einen gewählten oder hineingezogenen Pfad, bevor der Name abgefragt wird.
         Gibt {folder, name} zurück: interner Pfad und vorgeschlagener Playlist-Name."""
-        folder = normalize_folder(path)
+        folder = internal_folder(path)
         _check_dir(folder)
         with self._ctx.db() as db:
             _check_new(db, folder)
@@ -63,7 +62,7 @@ class FoldersApi(ApiArea):
         """Nimmt einen Ordner mit dem gewählten Playlist-Namen auf. Auf Spotify passiert noch
         nichts: die Playlist entsteht erst beim ersten bestätigten Sync. Gibt den Eintrag wie
         in `list()` zurück."""
-        folder = normalize_folder(path)
+        folder = internal_folder(path)
         name = _clean_name(name)
         _check_dir(folder)
         with self._ctx.db() as db:
@@ -78,6 +77,7 @@ class FoldersApi(ApiArea):
         name = _clean_name(name)
         with self._ctx.db() as db:
             row = check_folder(db, folder)
+            folder = row["folder"]
             if row["playlist_id"]:
                 with self._spotify("Die Playlist konnte auf Spotify nicht umbenannt werden", not_found=GONE) as client:
                     client.update_playlist(row["playlist_id"], name=name)
@@ -91,6 +91,7 @@ class FoldersApi(ApiArea):
         weil sie für den Track in allen Ordnern gelten."""
         with self._ctx.db() as db:
             row = check_folder(db, folder)
+            folder = row["folder"]
             if delete_playlist and row["playlist_id"]:
                 with self._spotify("Die Playlist konnte auf Spotify nicht entfernt werden") as client:
                     try:

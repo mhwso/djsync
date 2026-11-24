@@ -1,9 +1,12 @@
 """Review eines Ordners über die API-Schicht der GUI."""
 
+import os
+
 import httpx
 import pytest
 from fake_spotify import track
 
+from djsync.filenames import normalize_folder
 from djsync.gui.api import ApiError
 
 
@@ -50,7 +53,7 @@ def test_detail_shows_file_tags_and_suggestions(api, folder):
     detail = api.review.track(folder, fp)
 
     assert detail["filename"] == "Alpha - Two (Extended Mix).mp3"
-    assert detail["path"] == f"{folder}/Alpha - Two (Extended Mix).mp3"
+    assert detail["path"] == f"{normalize_folder(folder)}/Alpha - Two (Extended Mix).mp3"
     assert (detail["artist"], detail["title"], detail["isrc"], detail["duration_ms"]) == (
         "Alpha",
         "Two (Extended Mix)",
@@ -74,6 +77,26 @@ def test_detail_of_track_without_suggestions(api, folder):
     detail = api.review.track(folder, fp)
 
     assert detail["status"] == "not_found" and detail["candidates"] == []
+
+
+def test_folder_may_come_in_any_spelling(api, folder, music, spotify):
+    """Die Oberfläche kann einen Pfad anders schreiben als gespeichert (unter Windows z. B.
+    „C:\\Musik\\Mix“ statt „C:/Musik/Mix“); die API bringt ihn in die interne Form."""
+    other = str(music.root / "Mix" / ".." / "Mix") + os.sep
+
+    listing = api.review.tracks(other)
+    assert listing["folder"] == normalize_folder(folder)
+    assert listing["open_count"] == 2
+    missing = fingerprint(api, other, "Nobody - Missing.mp3")
+    assert api.review.track(other, missing)["filename"] == "Nobody - Missing.mp3"
+    assert api.review.not_on_spotify(other, missing)["open_count"] == 1
+    assert api.review.next_open(other) is not None
+    assert api.player.local(other, missing)["url"].startswith("http://127.0.0.1")
+    assert api.relink.check(other) == {"folder": normalize_folder(folder), "reachable": True}
+
+    assert api.folders.rename(other, "Neu")["name"] == "Neu"
+    api.folders.remove(other, False)
+    assert api.folders.list() == []
 
 
 def test_unknown_track_is_reported(api, folder):

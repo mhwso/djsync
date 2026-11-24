@@ -4,6 +4,8 @@ import sqlite3
 
 from fake_spotify import track
 
+from djsync.filenames import normalize_folder
+
 
 def test_no_folders_yet(api):
     assert api.folders.list() == []
@@ -25,7 +27,7 @@ def test_synced_folder_shows_playlist_last_sync_and_open_tracks(api, run_cli, mu
     assert run_cli("sync", folder, "--yes") == 0
 
     [entry] = api.folders.list()
-    assert entry["folder"] == folder
+    assert entry["folder"] == normalize_folder(folder)
     assert entry["name"] == "DJSYNC - Mix"
     assert entry["playlist_id"] in spotify.playlists
     assert entry["playlist_url"] == f"https://open.spotify.com/playlist/{entry['playlist_id']}"
@@ -55,6 +57,7 @@ CREATE TABLE managed_tracks (
 
 
 def _old_database(path, folder, playlist_id):
+    folder = normalize_folder(folder)  # so hat auch die alte CLI den Ordner gespeichert
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.executescript(OLD_SCHEMA)
@@ -78,7 +81,7 @@ def test_existing_database_is_taken_over(api, paths, music, spotify):
 
     assert api.folders.list() == [
         {
-            "folder": folder,
+            "folder": normalize_folder(folder),
             "name": "Meine Playlist",
             "playlist_id": playlist_id,
             "playlist_url": f"https://open.spotify.com/playlist/{playlist_id}",
