@@ -1,0 +1,91 @@
+/* Einrichtung: Schritte zum Anlegen der Spotify-App, Client-ID und Anmeldung */
+
+.setup-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+
+.setup-step {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 14px 16px;
+}
+
+.setup-step.current { border-color: var(--accent); }
+
+.setup-step-head { display: flex; align-items: center; gap: 10px; }
+
+.setup-step-head h2 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; }
+
+.setup-step-number {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface-2);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.setup-step.current .setup-step-number { background: var(--accent); color: var(--accent-text); }
+.setup-step.done .setup-step-number { background: var(--ok-bg); color: var(--ok); }
+
+.setup-step-body { margin-left: 34px; }
+
+/* Erledigte Schritte bleiben bedienbar (erneut aufrufbar), treten aber zurück */
+.setup-step.done:not(.current) .setup-step-body { color: var(--muted); }
+
+.setup-instructions { padding-left: 20px; margin: 8px 0 0; display: grid; gap: 6px; }
+
+.setup-copy { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+
+.setup-copy code {
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text);
+  user-select: all;
+}
+
+.setup-url { max-width: 100%; overflow-wrap: anywhere; }
+
+.setup-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+
+.input {
+  font: inherit;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  min-width: 0;
+  flex: 1;
+  max-width: 360px;
+}
+
+.button:disabled { opacity: 0.5; cursor: default; }
+
+.setup-hint { margin: 6px 0 0; font-size: 13px; }
+.setup-hint.error { color: var(--danger); }
+
+.notice.ok { border-color: var(--ok); color: var(--ok); }
+
+.setup-footer { margin-top: 16px; display: flex; justify-content: flex-end; }
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  animation: setup-spin 0.8s linear infinite;
+}
+
+@keyframes setup-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) { .spinner { animation: none; } }

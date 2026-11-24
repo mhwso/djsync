@@ -55,7 +55,7 @@ class AppContext:
 
     def spotify(self, cfg: Config | None = None) -> SpotifyClient:
         cfg = cfg or self.load_config()
-        auth = Auth(cfg.client_id, cfg.redirect_uri, SCOPES, self.token_file)
+        auth = Auth(cfg.client_id, cfg.redirect_uri, SCOPES, self.token_file, transport=self.transport)
         return SpotifyClient(auth, transport=self.transport)
 
     def http(self) -> httpx.Client:
