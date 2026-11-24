@@ -244,5 +244,6 @@ def apply_changes(run: SyncRun, change: ChangePlan, db: Database, client: Spotif
     if change.plan.has_changes:
         client.replace_playlist_items(playlist_id, change.plan.final)
     db.set_managed_tracks(playlist_id, change.plan.desired)
+    db.mark_synced(run.folder)
     db.commit()
     return playlist_id

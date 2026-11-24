@@ -1,0 +1,51 @@
+/* Startbildschirm: Liste der Ordner */
+
+.folder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.folder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px 24px;
+  padding: 12px 16px;
+}
+
+.folder + .folder { border-top: 1px solid var(--border); }
+
+.folder-main { min-width: 0; }
+
+.folder-name {
+  font-weight: 600;
+  font-size: 15px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-name a { text-decoration: none; }
+.folder-name a:hover { text-decoration: underline; }
+
+.folder-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-sync { text-align: right; white-space: nowrap; }
+
+.folder-state { display: flex; gap: 6px; justify-content: flex-end; min-width: 150px; }
+
+.folder.unreachable .folder-main { opacity: 0.65; }
+
+@media (max-width: 640px) {
+  .folder { grid-template-columns: minmax(0, 1fr); }
+  .folder-sync, .folder-state { text-align: left; justify-content: flex-start; }
+}
