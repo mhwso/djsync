@@ -8,4 +8,4 @@ Spotify liefert für Apps im Development Mode keine `preview_url` mehr. Spotify-
 
 ## Consequences
 
-Ob der eingebettete Player in WebView2 ganze Tracks abspielt (DRM), ist ungeklärt und wird vor der Umsetzung mit einem Prototyp geprüft. Gelingt das nicht, wird die Abspielmethode neu entschieden.
+Ein Prototyp (#8) hat bestätigt, dass der eingebettete Player in WebView2 nach der Anmeldung ganze Tracks abspielt und sich über die iFrame-API steuern lässt (Track laden, Abspielen, Pausieren, Springen, Position auslesen). Damit die Anmeldung einen Neustart übersteht, braucht das Fenster ein festes WebView2-Profil (`private_mode=False` mit eigenem `storage_path`). Die Anmeldung läuft in einem pywebview-Fenster mit demselben Profil, weil pywebview Pop-ups sonst im externen Browser öffnet.
