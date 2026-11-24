@@ -47,6 +47,21 @@ def test_open_tracks_are_listed_by_default(api, folder):
     assert not two["decided"]
 
 
+def test_open_counts_are_split_by_status(api, folder):
+    listing = api.review.tracks(folder)
+
+    assert listing["open_counts"] == {"approximate": 1, "not_found": 1}
+
+
+def test_approximate_and_not_found_have_their_own_filters(api, folder):
+    approximate = api.review.tracks(folder, "approximate")
+    not_found = api.review.tracks(folder, "not_found")
+
+    assert names(approximate) == ["Alpha - Two (Extended Mix).mp3"]
+    assert names(not_found) == ["Nobody - Missing.mp3"]
+    assert approximate["open_count"] == not_found["open_count"] == 2  # unabhängig vom Filter
+
+
 def test_detail_shows_file_tags_and_suggestions(api, folder):
     fp = fingerprint(api, folder, "Alpha - Two (Extended Mix).mp3")
 

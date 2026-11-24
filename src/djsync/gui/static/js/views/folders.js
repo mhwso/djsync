@@ -1,10 +1,11 @@
-// Startbildschirm: alle Ordner mit Playlist-Name, letztem Sync und Anzahl offener Tracks.
+// Startbildschirm: alle Ordner mit Playlist-Name, letztem Sync und offenen Tracks (ungefähr und
+// nicht gefunden getrennt gezählt).
 // Die Zahlen sind der Stand vom letzten Sync bzw. Review, es wird nichts neu eingelesen.
 
 import { api, errorMessage, on } from "../api.js";
 import { h } from "../dom.js";
 import { addFolder, chooseFolder, removeFolder, renameFolder } from "../folder-dialogs.js";
-import { absoluteTime, plural, relativeTime } from "../format.js";
+import { absoluteTime, relativeTime } from "../format.js";
 import { relinkDialog } from "../relink.js";
 import { startSync } from "./sync.js";
 
@@ -24,11 +25,18 @@ function state(folder) {
   if (!folder.reachable) {
     badges.push(h("span", { class: "badge warn", title: "Ist das Laufwerk eingebunden?" }, "Nicht erreichbar"));
   }
-  badges.push(
-    folder.open_count > 0
-      ? h("span", { class: "badge open" }, plural(folder.open_count, "offener Track", "offene Tracks"))
-      : h("span", { class: "badge ok" }, "Nichts offen"),
-  );
+  const { approximate = 0, not_found: notFound = 0 } = folder.open_counts ?? {};
+  if (approximate > 0) {
+    badges.push(
+      h("span", { class: "badge open", title: "Andere Version gefunden – ist trotzdem in der Playlist" }, `${approximate} ungefähr`),
+    );
+  }
+  if (notFound > 0) {
+    badges.push(
+      h("span", { class: "badge open", title: "Kein passender Track auf Spotify – fehlt in der Playlist" }, `${notFound} nicht gefunden`),
+    );
+  }
+  if (approximate + notFound === 0) badges.push(h("span", { class: "badge ok" }, "Nichts offen"));
   return h("div", { class: "folder-state" }, badges);
 }
 

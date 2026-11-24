@@ -1,6 +1,6 @@
 // Review eines Ordners: links die Track-Liste mit Filtern, rechts die Detailansicht.
 //
-//   #/review?folder=<Pfad>[&filter=open|decided|exact]
+//   #/review?folder=<Pfad>[&filter=open|approximate|not_found|decided|exact]
 //
 // Jede Entscheidung wird sofort gespeichert (API review.*); danach springt die Auswahl zum
 // nächsten offenen Track. Review-Entscheidungen verändern die Playlist nicht.
@@ -22,7 +22,7 @@ import { plural } from "../../format.js";
 import { bulkSummary, renderBulk } from "./bulk.js";
 import { renderDetail, renderDone } from "./detail.js";
 import { handleKey, helpDialog } from "./keys.js";
-import { FILTERS } from "./labels.js";
+import { FILTERS, OPEN_SUBFILTERS } from "./labels.js";
 import { renderFilters, renderList } from "./list.js";
 import { createPlayer } from "./player.js";
 import { createListening } from "./spotify.js";
@@ -146,9 +146,13 @@ export default {
 
     // Nach einer Entscheidung: Liste neu laden, zum nächsten offenen Track springen. Ist er
     // im aktuellen Filter nicht sichtbar (z. B. „exakt“), bleibt der entschiedene Track gewählt.
+    // In „ungefähr“ und „nicht gefunden“ fällt der entschiedene Track aus der Liste; dort geht
+    // es mit dem Track weiter, der an seine Stelle rückt.
     async function after(result) {
+      const index = state.listing.tracks.findIndex((t) => t.fingerprint === result.track.fingerprint);
       await loadList();
-      const visible = (fp) => state.listing.tracks.some((t) => t.fingerprint === fp);
+      const tracks = state.listing.tracks;
+      const visible = (fp) => tracks.some((t) => t.fingerprint === fp);
       if (result.next && visible(result.next)) return select(result.next);
       if (visible(result.track.fingerprint)) {
         state.detail = result.track;
@@ -156,6 +160,9 @@ export default {
         state.message = null;
         renderSide();
         return renderMain();
+      }
+      if (OPEN_SUBFILTERS.has(state.filter)) {
+        return select(tracks.length ? tracks[Math.min(Math.max(index, 0), tracks.length - 1)].fingerprint : null);
       }
       return select(result.next ?? null);
     }
@@ -340,6 +347,13 @@ export default {
       notOnSpotify: () => (state.marked.size > 1 ? bulkActions.notOnSpotify() : decide("not_on_spotify")),
       searchAgain: () => bulkActions.searchAgain(),
       async skip() {
+        // In „ungefähr“ und „nicht gefunden“ innerhalb der Liste weiter (mit Umlauf)
+        if (OPEN_SUBFILTERS.has(state.filter)) {
+          const tracks = state.listing?.tracks ?? [];
+          const i = tracks.findIndex((t) => t.fingerprint === state.selected);
+          if (tracks.length > 1) await select(tracks[(i + 1) % tracks.length].fingerprint);
+          return;
+        }
         try {
           const next = await api("review.next_open", folder, state.selected);
           if (next) {
