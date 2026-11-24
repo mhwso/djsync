@@ -1,7 +1,7 @@
 ; Inno-Setup-Skript für den Windows-Installer von djsync.
 ;
-; Installiert pro Benutzer (ohne Adminrechte) nach %LOCALAPPDATA%\Programs\djsync und legt
-; einen Startmenü-Eintrag an.
+; Installiert pro Benutzer (ohne Adminrechte, ohne Code-Signierung) nach
+; %LOCALAPPDATA%\Programs\djsync und legt einen Startmenü-Eintrag an.
 ; Konfiguration, Datenbank und Login liegen unabhängig davon unter %APPDATA%\djsync und werden
 ; vom Installer nicht angefasst – Daten einer früheren djsync.exe werden so weiterverwendet.
 ; Der Deinstaller fragt, ob %APPDATA%\djsync gelöscht werden soll.
@@ -9,13 +9,7 @@
 ; Voraussetzung: dist\djsync\ aus packaging\djsync.spec (PyInstaller).
 ; Aufruf (im Projektordner):
 ;   iscc /DAppVersion=0.3.0 packaging\djsync.iss
-; Ergebnis: dist\djsync-setup-0.3.0.exe (unsigniert)
-;
-; Signierter Build (nur in der Release-Pipeline, Signieren über SignPath):
-;   iscc /DAppVersion=0.3.0 /DSignedUninstaller packaging\djsync.iss
-; Inno Setup legt dann beim ersten Durchlauf build\signed-uninstaller\uninst-<…>.e32 an und
-; bricht ab. Ist diese Datei signiert, übernimmt ein zweiter Durchlauf die Signatur. Aus ihr
-; entstehen die temporäre Setup-Kopie (is-….tmp), die Windows sonst blockiert, und unins000.exe.
+; Ergebnis: dist\djsync-setup-0.3.0.exe
 
 #ifndef AppVersion
   #error AppVersion fehlt – Aufruf mit /DAppVersion=x.y.z
@@ -45,15 +39,6 @@ UninstallDisplayIcon={app}\{#AppExe}
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
-; Versionsinfos in Setup und Deinstaller: SignPath prüft beim Signieren Produktname und -version
-VersionInfoVersion={#AppVersion}
-VersionInfoProductName={#AppName}
-VersionInfoProductVersion={#AppVersion}
-VersionInfoProductTextVersion={#AppVersion}
-#ifdef SignedUninstaller
-SignedUninstaller=yes
-SignedUninstallerDir=..\build\signed-uninstaller
-#endif
 LicenseFile=..\LICENSE
 OutputDir=..\dist
 OutputBaseFilename=djsync-setup-{#AppVersion}

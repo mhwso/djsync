@@ -2,15 +2,6 @@ name: Windows-Release
 
 # Ein Tag wie v0.3.0 baut den Windows-Installer (djsync-setup-<version>.exe) und hängt ihn an
 # ein GitHub-Release. Manuell gestartet liegt der Installer nur als Artefakt am Lauf.
-#
-# Signieren über SignPath (siehe README, Abschnitt „Code signing policy“), sobald die
-# Repository-Variable SIGNPATH_ORGANIZATION_ID und das Secret SIGNPATH_API_TOKEN gesetzt sind.
-# Tags nutzen die Richtlinie release-signing (jeder Auftrag wird in SignPath freigegeben),
-# manuelle Läufe test-signing (Testzertifikat, nur zum Prüfen der Pipeline).
-# Zwei Signieraufträge pro Lauf:
-#   1. djsync.exe und Inno Setups Deinstaller-Vorlage (daraus wird auch die temporäre
-#      Setup-Kopie, die Windows ohne Signatur blockiert) – Konfiguration packaging/signpath/app.xml
-#   2. der fertige Installer – packaging/signpath/installer.xml
 on:
   push:
     tags: ["v*"]
@@ -24,10 +15,6 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: write  # nur zum Anlegen des Releases
-      actions: read  # SignPath lädt die zu signierenden Artefakte des Laufs herunter
-    env:
-      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' }}
-      SIGNING_POLICY: ${{ startsWith(github.ref, 'refs/tags/') && 'release-signing' || 'test-signing' }}
     defaults:
       run:
         shell: pwsh
@@ -71,131 +58,18 @@ jobs:
             if (-not (Test-Path $f)) { Write-Error "Fehlt im Bundle: $f"; exit 1 }
           }
 
-      - name: Inno Setup bereitstellen
+      - name: Installer bauen (Inno Setup)
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) {
             choco install innosetup --yes --no-progress
             if ($LASTEXITCODE -ne 0) { exit 1 }
           }
-          "ISCC=$iscc" >> $env:GITHUB_ENV
-
-      - name: Installer bauen (unsigniert)
-        if: env.SIGN != 'true'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          if ($env:GITHUB_REF -like "refs/tags/*") {
-            Write-Output "::warning::SignPath ist nicht eingerichtet – der Installer wird unsigniert veröffentlicht."
-          }
-          & $env:ISCC /Q "/DAppVersion=$env:VERSION" packaging\djsync.iss
+          & $iscc /Q "/DAppVersion=$env:VERSION" packaging\djsync.iss
           if ($LASTEXITCODE -ne 0) { exit 1 }
-
-      # Erster Durchlauf: Inno Setup legt die unsignierte Deinstaller-Vorlage an und bricht ab
-      - name: Deinstaller-Vorlage erzeugen
-        id: uninstaller
-        if: env.SIGN == 'true'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          & $env:ISCC /Q "/DAppVersion=$env:VERSION" /DSignedUninstaller packaging\djsync.iss
-          $templates = @(Get-ChildItem "build\signed-uninstaller\uninst-*.e32")
-          if ($templates.Count -ne 1) {
-            Write-Error "Erwartet genau eine Deinstaller-Vorlage, gefunden: $($templates.Count)"
-            exit 1
-          }
-          New-Item -ItemType Directory -Force "build\to-sign\app" | Out-Null
-          Copy-Item "dist\djsync\djsync.exe" "build\to-sign\app\"
-          Copy-Item $templates[0].FullName "build\to-sign\app\uninst.exe"
-          "name=$($templates[0].Name)" >> $env:GITHUB_OUTPUT
-          exit 0
-
-      - name: Programm und Deinstaller hochladen (zum Signieren)
-        id: upload-app
-        if: env.SIGN == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: unsigned-app
-          path: build/to-sign/app/
-          retention-days: 1
-
-      - name: Programm und Deinstaller signieren (SignPath)
-        if: env.SIGN == 'true'
-        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: djsync
-          signing-policy-slug: ${{ env.SIGNING_POLICY }}
-          artifact-configuration-slug: app
-          github-artifact-id: ${{ steps.upload-app.outputs.artifact-id }}
-          parameters: |
-            version: "${{ steps.version.outputs.version }}"
-          wait-for-completion-timeout-in-seconds: 3600  # Zeit für die Freigabe in SignPath
-          output-artifact-directory: build/signed/app
-
-      # Zweiter Durchlauf: übernimmt die Signatur der Vorlage in Setup-Kopie und Deinstaller
-      - name: Installer bauen (signierte Teile)
-        if: env.SIGN == 'true'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-          TEMPLATE: ${{ steps.uninstaller.outputs.name }}
-        run: |
-          Copy-Item "build\signed\app\djsync.exe" "dist\djsync\djsync.exe" -Force
-          Copy-Item "build\signed\app\uninst.exe" "build\signed-uninstaller\$env:TEMPLATE" -Force
-          & $env:ISCC /Q "/DAppVersion=$env:VERSION" /DSignedUninstaller packaging\djsync.iss
-          if ($LASTEXITCODE -ne 0) { exit 1 }
-          New-Item -ItemType Directory -Force "build\to-sign\setup" | Out-Null
-          Copy-Item "dist\djsync-setup-$env:VERSION.exe" "build\to-sign\setup\"
-
-      - name: Installer hochladen (zum Signieren)
-        id: upload-setup
-        if: env.SIGN == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: unsigned-setup
-          path: build/to-sign/setup/
-          retention-days: 1
-
-      - name: Installer signieren (SignPath)
-        if: env.SIGN == 'true'
-        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: djsync
-          signing-policy-slug: ${{ env.SIGNING_POLICY }}
-          artifact-configuration-slug: installer
-          github-artifact-id: ${{ steps.upload-setup.outputs.artifact-id }}
-          parameters: |
-            version: "${{ steps.version.outputs.version }}"
-          wait-for-completion-timeout-in-seconds: 3600  # Zeit für die Freigabe in SignPath
-          output-artifact-directory: build/signed/setup
-
-      - name: Signierten Installer übernehmen, Signaturen prüfen
-        if: env.SIGN == 'true'
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          $setup = "dist\djsync-setup-$env:VERSION.exe"
-          Copy-Item "build\signed\setup\djsync-setup-$env:VERSION.exe" $setup -Force
-          # Testzertifikate (test-signing) sind nicht vertrauenswürdig – dann nur vorhanden sein
-          $requireValid = $env:SIGNING_POLICY -eq "release-signing"
-          $failed = $false
-          foreach ($f in "dist\djsync\djsync.exe", $setup) {
-            $sig = Get-AuthenticodeSignature $f
-            Write-Output "$f`: $($sig.Status) – $($sig.SignerCertificate.Subject)"
-            if (-not $sig.SignerCertificate -or ($requireValid -and $sig.Status -ne "Valid")) {
-              Write-Output "::error::Keine gültige Signatur: $f"
-              $failed = $true
-            }
-          }
-          if ($failed) { exit 1 }
-
-      - name: Installer prüfen
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
-        run: Get-Item "dist\djsync-setup-$env:VERSION.exe"
+          Get-Item "dist\djsync-setup-$env:VERSION.exe"
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
