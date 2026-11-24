@@ -26,7 +26,16 @@ function state(folder) {
   return h("div", { class: "folder-state" }, badges);
 }
 
-function folderRow(folder) {
+// Knopf „Review“ öffnet das Review des Ordners (#/review?folder=…)
+function reviewButton(folder, navigate) {
+  return h(
+    "button",
+    { class: "button" + (folder.open_count > 0 ? " primary" : ""), onclick: () => navigate("review", { folder: folder.folder }) },
+    "Review",
+  );
+}
+
+function folderRow(folder, navigate) {
   const name = folder.playlist_url
     ? h("a", { href: folder.playlist_url, target: "_blank", title: "Playlist in Spotify öffnen" }, folder.name)
     : folder.name;
@@ -41,13 +50,14 @@ function folderRow(folder) {
     ),
     h("div", { class: "folder-sync" }, lastSync(folder)),
     state(folder),
+    reviewButton(folder, navigate),
   );
 }
 
 export default {
   title: "Ordner",
 
-  async render(root) {
+  async render(root, params, { navigate }) {
     const body = h("div", { class: "view-body" }, h("p", { class: "muted" }, "Lade Ordner …"));
     root.append(h("div", { class: "view-head" }, h("h1", {}, "Ordner")), body);
 
@@ -70,6 +80,6 @@ export default {
       );
       return;
     }
-    body.replaceChildren(h("ul", { class: "folder-list" }, folders.map(folderRow)));
+    body.replaceChildren(h("ul", { class: "folder-list" }, folders.map((f) => folderRow(f, navigate))));
   },
 };
