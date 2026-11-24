@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 
-from . import ui
 from .config import Config
 from .db import Database
 from .matching import choose_best, normalize_mix, split_artists_raw, split_title
@@ -25,11 +25,18 @@ from .spotify import SpotifyClient
 SETTLED = frozenset({EXACT, APPROXIMATE, MANUAL, NOT_ON_SPOTIFY})
 
 
-def search_candidates(client: SpotifyClient, f: LocalFile, cfg: Config) -> list[Candidate]:
-    """ISRC-Suche, danach Feldsuche, danach Freitext – bricht ab, sobald ein exakter Treffer da ist."""
+def search_candidates(
+    client: SpotifyClient, f: LocalFile, cfg: Config, before_request: Callable[[], None] | None = None
+) -> list[Candidate]:
+    """ISRC-Suche, danach Feldsuche, danach Freitext – bricht ab, sobald ein exakter Treffer da ist.
+
+    before_request wird vor jeder Spotify-Anfrage aufgerufen; eine Ausnahme daraus bricht die Suche ab.
+    """
     found: dict[str, Candidate] = {}
 
     def run(query: str) -> bool:
+        if before_request:
+            before_request()
         for c in client.search_tracks(query):
             found.setdefault(c.id, c)
         result = choose_best(f, list(found.values()), duration_tolerance_ms=cfg.duration_tolerance_ms)
@@ -99,24 +106,32 @@ def match_files(
     client: SpotifyClient,
     cfg: Config,
     retry: bool = False,
-) -> None:
+    on_progress: Callable[[int, int], None] | None = None,
+    before_request: Callable[[], None] | None = None,
+) -> int:
+    """Sucht alle Tracks auf Spotify, die (erneut) gesucht werden müssen; gibt deren Anzahl zurück.
+
+    on_progress(erledigt, gesamt) kommt einmal vorab (0, gesamt) und nach jedem Track.
+    Jeder Track wird sofort gespeichert – ein Abbruch über before_request verliert nichts.
+    """
     todo: dict[str, LocalFile] = {}
     for f, fp in files:
         if fp and fp not in todo and needs_search(db.get_match(fp), cfg, retry):
             todo[fp] = f
     if not todo:
-        return
-    with ui.progress("Suche auf Spotify", len(todo)) as advance:
-        for fp, f in todo.items():
-            candidates = search_candidates(client, f, cfg)
-            result = choose_best(
-                f, candidates, duration_tolerance_ms=cfg.duration_tolerance_ms, min_score=cfg.min_score
-            )
-            top = [c for c, _ in result.ranked[: cfg.review_candidates]]
-            db.save_match(fp, result.status, result.spotify_id, top)
-            db.commit()
-            advance()
-    ui.success(f"{len(todo)} Tracks auf Spotify gesucht")
+        return 0
+    report = on_progress or (lambda done, total: None)
+    report(0, len(todo))
+    for i, (fp, f) in enumerate(todo.items(), 1):
+        candidates = search_candidates(client, f, cfg, before_request)
+        result = choose_best(
+            f, candidates, duration_tolerance_ms=cfg.duration_tolerance_ms, min_score=cfg.min_score
+        )
+        top = [c for c, _ in result.ranked[: cfg.review_candidates]]
+        db.save_match(fp, result.status, result.spotify_id, top)
+        db.commit()
+        report(i, len(todo))
+    return len(todo)
 
 
 def summarize(files: list[tuple[LocalFile, str | None]], db: Database) -> dict[str, list[LocalFile]]:

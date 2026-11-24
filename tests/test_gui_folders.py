@@ -2,6 +2,8 @@
 
 import sqlite3
 
+from fake_spotify import track
+
 
 def test_no_folders_yet(api):
     assert api.folders.list() == []
@@ -9,8 +11,7 @@ def test_no_folders_yet(api):
 
 def _mix_folder(music, spotify):
     """Ordner mit je einem exakten, einem ungefähren und einem nicht gefundenen Track."""
-    spotify.add_track("a" * 22, "One", ["Alpha"])
-    spotify.add_track("b" * 22, "Two", ["Alpha"])
+    spotify.catalog += [track("id_one", "Alpha", "One"), track("id_two", "Alpha", "Two")]
     return music.folder(
         "Mix",
         "Alpha - One.mp3",
@@ -72,7 +73,7 @@ def _old_database(path, folder, playlist_id):
 
 def test_existing_database_is_taken_over(api, paths, music, spotify):
     folder = music.folder("Alt")
-    playlist_id = spotify.add_playlist("Meine Playlist")
+    playlist_id = spotify.add_playlist("Meine Playlist", [])
     _old_database(paths.db_file, folder, playlist_id)
 
     assert api.folders.list() == [
@@ -89,23 +90,23 @@ def test_existing_database_is_taken_over(api, paths, music, spotify):
 
 
 def test_cli_keeps_working_with_taken_over_database(api, paths, run_cli, music, spotify):
-    spotify.add_track("a" * 22, "One", ["Alpha"])
+    spotify.catalog.append(track("id_one", "Alpha", "One"))
     folder = music.folder("Alt", "Alpha - One.mp3")
-    playlist_id = spotify.add_playlist("Meine Playlist")
+    playlist_id = spotify.add_playlist("Meine Playlist", [])
     _old_database(paths.db_file, folder, playlist_id)
 
     assert run_cli("status") == 0
     assert run_cli("sync", folder, "--yes") == 0
 
     assert list(spotify.playlists) == [playlist_id]  # keine neue Playlist angelegt
-    assert spotify.playlists[playlist_id]["items"] == ["a" * 22]
+    assert spotify.playlists[playlist_id]["items"] == ["id_one"]
     [entry] = api.folders.list()
     assert entry["playlist_id"] == playlist_id and entry["last_sync"]
 
 
 def test_unreachable_folder_is_marked(api, paths, music, spotify):
     folder = music.folder("Extern")
-    _old_database(paths.db_file, folder, spotify.add_playlist("Meine Playlist"))
+    _old_database(paths.db_file, folder, spotify.add_playlist("Meine Playlist", []))
     (music.root / "Extern").rmdir()
 
     [entry] = api.folders.list()

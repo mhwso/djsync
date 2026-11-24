@@ -2,8 +2,8 @@
 
 Fixtures:
   paths      – temporärer Konfigurations- und Datenordner, Client-ID und gültiger Login
-  spotify    – FakeSpotify (HTTP-Ebene), siehe tests/fakes.py
-  github     – FakeGitHub (HTTP-Ebene)
+  spotify    – FakeSpotify (HTTP-Ebene, leerer Katalog), siehe tests/fake_spotify.py
+  github     – FakeGitHub (HTTP-Ebene), siehe tests/fakes.py
   events     – RecordingEvents, fängt Fortschritts-Events der API-Schicht ab
   ctx        – AppContext mit echter SQLite-Datei im temporären Datenordner
   api        – das API-Objekt, wie es pywebview der Oberfläche bereitstellt
@@ -23,7 +23,8 @@ from djsync import cli, config
 from djsync.gui.api import Api
 from djsync.gui.context import AppContext
 from djsync.spotify import SpotifyClient
-from fakes import FakeGitHub, FakeSpotify, RecordingEvents, router, write_token
+from fake_spotify import FakeSpotify
+from fakes import FakeGitHub, RecordingEvents, router, write_token
 
 CLIENT_ID = "c" * 32
 
