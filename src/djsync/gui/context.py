@@ -19,6 +19,7 @@ from ..config import SCOPES, Config
 from ..db import Database
 from ..spotify import SpotifyClient
 from .events import Events, NullEvents
+from .media import MediaServer
 
 
 @dataclass
@@ -27,6 +28,7 @@ class AppContext:
     data_dir: Path
     transport: httpx.BaseTransport | None = None  # None = echtes Netzwerk
     events: Events = field(default_factory=NullEvents)
+    media: MediaServer = field(default_factory=MediaServer)  # startet erst beim ersten Anhören
 
     @classmethod
     def default(cls, events: Events | None = None) -> AppContext:
@@ -39,6 +41,11 @@ class AppContext:
     @property
     def token_file(self) -> Path:
         return self.data_dir / "token.json"
+
+    @property
+    def cache_dir(self) -> Path:
+        """Zwischenspeicher (z. B. aus AIFF umgewandelte WAV-Dateien); darf jederzeit gelöscht werden."""
+        return self.data_dir / "cache"
 
     @contextmanager
     def db(self) -> Iterator[Database]:

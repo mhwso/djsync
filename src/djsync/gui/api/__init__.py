@@ -21,6 +21,7 @@ from __future__ import annotations
 from ..context import AppContext
 from .base import ApiArea, ApiError
 from .folders import FoldersApi
+from .player import PlayerApi
 from .review import ReviewApi
 from .setup import SetupApi
 from .relink import RelinkApi
@@ -36,6 +37,7 @@ class Api:
         self._ctx = ctx
         self.folders = FoldersApi(ctx)
         self.review = ReviewApi(ctx)
+        self.player = PlayerApi(ctx)
         self.setup = SetupApi(ctx)
         self.relink = RelinkApi(ctx)
         self.settings = SettingsApi(ctx)

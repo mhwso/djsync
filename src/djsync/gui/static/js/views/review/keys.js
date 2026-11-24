@@ -21,6 +21,8 @@ const shortcuts = [
   { keys: ["s"], match: ["s"], label: "Überspringen (nächster offener Track)", run: (c) => c.skip() },
   { keys: ["r"], match: ["r"], label: "Entschiedenen Track auf „offen“ zurücksetzen", run: (c) => c.reset() },
   { keys: ["f"], match: ["f"], label: "Filter wechseln (offen, entschieden, exakt)", run: (c) => c.nextFilter() },
+  { keys: ["Leertaste"], match: [" "], label: "Lokale Datei abspielen / pausieren", run: (c) => c.togglePlay() },
+  { keys: ["→", "←"], match: ["ArrowRight", "ArrowLeft"], label: "Um die Sprungweite vor- / zurückspringen", run: (c, e) => c.skipPlay(e.key === "ArrowRight" ? 1 : -1) },
   { keys: ["Esc"], match: ["Escape"], label: "Mehrfachauswahl aufheben", run: (c) => c.clearSelection() },
   { keys: ["?"], match: ["?"], label: "Diese Übersicht", run: (c) => c.toggleHelp() },
   { keys: ["q"], match: ["q"], label: "Review verlassen", run: (c) => c.leave() },
